@@ -1,5 +1,9 @@
 from setuptools import setup
 
+def readme():
+    with open('README.rst') as f:
+        return f.read()
+
 setup(name='orbbit',
       version='0.1',
       description='A language-independent API for cryptocurrency trading robots.',
@@ -14,7 +18,14 @@ setup(name='orbbit',
       author_email='bmpenuelas@gmail.com',
       license='Closed source',
       packages=['orbbit'],
+      include_package_data=True,
       install_requires=[
           'datetime',
       ],
+      scripts=['bin/start_hi'],
+      # entry_points={
+      #     'console_scripts': [
+      #         'start_main = my_project.__main__:main'
+      #     ]
+      # },
       zip_safe=False)
