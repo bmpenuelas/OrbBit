@@ -24,6 +24,7 @@ setup(name='orbbit',
       install_requires=[
           'flask',
           'flask-httpauth',
+          'ccxt',
       ],
       # scripts=['bin/start_hi'],
       # entry_points={

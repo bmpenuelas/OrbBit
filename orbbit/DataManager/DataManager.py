@@ -1,14 +1,39 @@
 import sys
 import subprocess
+
 from   flask import Flask, jsonify, abort, make_response, request
 from   flask_httpauth import HTTPBasicAuth
 
-app = Flask(__name__)
+import ccxt
+
+
+#----------------------------------------------------------------------------
+# EXCHANGES SETUP
+#----------------------------------------------------------------------------
+
+hitbtc = ccxt.hitbtc({'verbose': False})
+  
+def print_markets():
+  hitbtc_markets = hitbtc.load_markets()
+  print(hitbtc.id, hitbtc_markets)
+
+
+def fetch_ticker():
+  hitbtc = ccxt.hitbtc({'verbose': False})
+  return hitbtc.fetch_ticker('BTC/USD')
+
+
+
+
+
+
 
 
 #----------------------------------------------------------------------------
 # Flask App error funcs redefinition  
 #----------------------------------------------------------------------------
+
+app = Flask(__name__)
 
 @app.errorhandler(404)
 def not_found(error):
@@ -140,6 +165,24 @@ def delete_task(task_id):
 
 
 
+#----------------------------------------------------------------------------
+#   Route /ticker
+#----------------------------------------------------------------------------
+
+@app.route('/ticker', methods=['GET'])
+def get_ticker():
+  """ Get BTC/USD ticker info.
+
+  Args:
+
+
+  Returns:
+    Json-formatted data.
+
+  """
+  return jsonify({'ticker': fetch_ticker()})
+
+
 
 
 #----------------------------------------------------------------------------
@@ -155,7 +198,7 @@ def start():
   Returns:
     Subprocess ID.
   """
-  
+
   child = subprocess.Popen([sys.executable, './DataManager.py'])
   return child
 
