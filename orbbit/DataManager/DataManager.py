@@ -1,6 +1,7 @@
 import sys
 import subprocess
 from   flask import Flask, jsonify, abort, make_response, request
+from   flask_httpauth import HTTPBasicAuth
 
 app = Flask(__name__)
 
@@ -17,6 +18,26 @@ def not_found(error):
 def bad_request(error):
     return make_response(jsonify({'error': 'Bad request'}), 400)
 
+
+
+#----------------------------------------------------------------------------
+# AUTHENTICATION
+#----------------------------------------------------------------------------
+
+auth = HTTPBasicAuth()
+""" Add @auth.login_required to a route/method definition to make it 
+    password-protected.
+"""
+
+@auth.get_password
+def get_password(username):
+    if username == 'rob':
+        return 'bot'
+    return None
+
+@auth.error_handler
+def unauthorized():
+    return make_response(jsonify({'error': 'Unauthorized access'}), 401)
 
 
 
@@ -48,76 +69,74 @@ tasks = [
 #----------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------
-# Route /datamanager
+#   Route /datamanager
 #----------------------------------------------------------------------------
 
 @app.route('/datamanager', methods=['GET'])
 def get_data():
-    """Get all data
-         Return all data available.
+  """ Get all data.
+  Return all data available in json format.
 
-         Parameters
-         ----------
-         none
+  Args:
 
 
-         Returns
-         -------
-         Json-formatted data.
+  Returns:
+    Json-formatted data.
 
-        """
-    return jsonify({'tasks': tasks})
+  """
+  return jsonify({'tasks': tasks})
 
 
 @app.route('/datamanager/<int:task_id>', methods=['GET'])
 def get_task(task_id):
-    task = [task for task in tasks if task['id'] == task_id]
-    if len(task) == 0:
-        abort(404)
-    return jsonify({'task': task[0]})
+  task = [task for task in tasks if task['id'] == task_id]
+  if len(task) == 0:
+      abort(404)
+  return jsonify({'task': task[0]})
 
 
 @app.route('/datamanager', methods=['POST'])
 def create_task():
-    if not request.json or not 'title' in request.json:
-        print(request.json)
-        abort(400)
-    task = {
-        'id': tasks[-1]['id'] + 1,
-        'title': request.json['title'],
-        'description': request.json.get('description', ""),
-        'done': False
-    }
-    tasks.append(task)
-    return jsonify({'task': task}), 201
+  if not request.json or not 'title' in request.json:
+      print(request.json)
+      abort(400)
+  task = {
+      'id': tasks[-1]['id'] + 1,
+      'title': request.json['title'],
+      'description': request.json.get('description', ""),
+      'done': False
+  }
+  tasks.append(task)
+  return jsonify({'task': task}), 201
 
 
 @app.route('/datamanager/<int:task_id>', methods=['PUT'])
 def update_task(task_id):
-    task = [task for task in tasks if task['id'] == task_id]
-    if len(task) == 0:
-        abort(404)
-    if not request.json:
-        abort(400)
-    if 'title' in request.json and type(request.json['title']) != unicode:
-        abort(400)
-    if 'description' in request.json and type(request.json['description']) is not unicode:
-        abort(400)
-    if 'done' in request.json and type(request.json['done']) is not bool:
-        abort(400)
-    task[0]['title'] = request.json.get('title', task[0]['title'])
-    task[0]['description'] = request.json.get('description', task[0]['description'])
-    task[0]['done'] = request.json.get('done', task[0]['done'])
-    return jsonify({'task': task[0]})
+  task = [task for task in tasks if task['id'] == task_id]
+  if len(task) == 0:
+      abort(404)
+  if not request.json:
+      abort(400)
+  if 'title' in request.json and type(request.json['title']) != unicode:
+      abort(400)
+  if 'description' in request.json and type(request.json['description']) is not unicode:
+      abort(400)
+  if 'done' in request.json and type(request.json['done']) is not bool:
+      abort(400)
+  task[0]['title'] = request.json.get('title', task[0]['title'])
+  task[0]['description'] = request.json.get('description', task[0]['description'])
+  task[0]['done'] = request.json.get('done', task[0]['done'])
+  return jsonify({'task': task[0]})
 
 
 @app.route('/datamanager/<int:task_id>', methods=['DELETE'])
+@auth.login_required
 def delete_task(task_id):
-    task = [task for task in tasks if task['id'] == task_id]
-    if len(task) == 0:
-        abort(404)
-    tasks.remove(task[0])
-    return jsonify({'result': True})
+  task = [task for task in tasks if task['id'] == task_id]
+  if len(task) == 0:
+      abort(404)
+  tasks.remove(task[0])
+  return jsonify({'result': True})
 
 
 
@@ -128,10 +147,20 @@ def delete_task(task_id):
 #----------------------------------------------------------------------------
 
 def start():
+  """ Start DataManager API Server
+  Starts in a separate subprocess.
+
+  Args:
+
+  Returns:
+    Subprocess ID.
+  """
+  
   child = subprocess.Popen([sys.executable, './DataManager.py'])
+  return child
 
 if __name__ == '__main__':
-  print("Main")
+  print("Starting API Server.")
   app.run(debug=True)
 else:
-  print("Not main")
+  print("Imported Orbbit.")
