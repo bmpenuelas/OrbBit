@@ -1,3 +1,5 @@
+# To setup this package, issue "pip install -e ."
+
 from setuptools import setup
 
 def readme():
@@ -20,9 +22,10 @@ setup(name='orbbit',
       packages=['orbbit'],
       include_package_data=True,
       install_requires=[
-          'datetime',
+          'flask',
+          'flask-httpauth',
       ],
-      scripts=['bin/start_hi'],
+      # scripts=['bin/start_hi'],
       # entry_points={
       #     'console_scripts': [
       #         'start_main = my_project.__main__:main'
