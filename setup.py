@@ -25,6 +25,8 @@ setup(name='orbbit',
       install_requires=[
           'flask',
           'flask-httpauth',
+          'dataset',
+          'mysqlclient',
           'ccxt',
       ],
       # scripts=['bin/start_hi'],
