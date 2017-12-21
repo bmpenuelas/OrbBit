@@ -1,10 +1,15 @@
 import sys
+import time
 import threading
 
 from   flask import Flask, jsonify, abort, make_response, request
 from   flask_httpauth import HTTPBasicAuth
 
 import ccxt
+
+import pymongo
+import json
+
 
 
 #----------------------------------------------------------------------------
@@ -23,6 +28,20 @@ def fetch_ticker():
     return hitbtc.fetch_ticker('BTC/USD')
 
 
+#----------------------------------------------------------------------------
+# DATABASE SETUP
+#----------------------------------------------------------------------------
+from pkg_resources import resource_filename
+datamanager_db_route = resource_filename('orbbit', 'DataManager/datamanager_db.key')
+
+with open(datamanager_db_route) as f:
+    datamanager_db_key = json.load(f)    
+
+datamanager_db_connection = pymongo.MongoClient(datamanager_db_key['url'], datamanager_db_key['port'])
+datamanager_db = datamanager_db_connection[datamanager_db_key['database']]
+datamanager_db.authenticate(datamanager_db_key['user'], datamanager_db_key['password'])
+
+fetching_symbols = ['BTC_USD',]
 
 
 
@@ -76,7 +95,7 @@ def unauthorized():
 #----------------------------------------------------------------------------
 
 @app.route('/datamanager', methods=['GET'])
-def get_data():
+def get_fetching_symbols():
     """ Get all data.
     Return all data available in json format.
 
@@ -87,15 +106,19 @@ def get_data():
       Json-formatted data.
 
     """
-    return jsonify({'tasks': tasks})
+    return jsonify({'fetching_symbols': fetching_symbols})
 
 
-@app.route('/datamanager/<int:task_id>', methods=['GET'])
-def get_task(task_id):
-    task = [task for task in tasks if task['id'] == task_id]
-    if len(task) == 0:
-        abort(404)
-    return jsonify({'task': task[0]})
+#----------------------------------------------------------------------------
+#   Route /datamanager/add_fetching_symbol/
+#----------------------------------------------------------------------------
+
+@app.route('/datamanager/add_fetching_symbol/<string:new_symbol>', methods=['GET'])
+def add_fetching_symbol(new_symbol):
+    if not( new_symbol in fetching_symbols ):
+        fetching_symbols.append(new_symbol)
+
+    return jsonify({'fetching_symbols': fetching_symbols})
 
 
 @app.route('/datamanager', methods=['POST'])
@@ -166,15 +189,19 @@ def get_ticker():
 #----------------------------------------------------------------------------
 # PUBLIC METHODS
 #----------------------------------------------------------------------------
-class DataManager_API (threading.Thread):
-   def __init__(self, threadID):
-      threading.Thread.__init__(self)
-      self.threadID = threadID
 
-   def run(self):
-      print("DataManager_API STARTED with threadID " + self.name)
-      app.run(debug=False)
-      print("DataManager_API STOPPED with threadID " + self.name)
+class DataManager_API (threading.Thread):
+    def __init__(self, threadID):
+        threading.Thread.__init__(self)
+        self.threadID = threadID
+
+    def run(self):
+        print('DataManager_API STARTED with threadID ' + self.name)
+        app.run(debug=False)
+        print('DataManager_API STOPPED with threadID ' + self.name)
+
+
+threadDataManager_API = DataManager_API('threadDataManager_API')
 
 
 
@@ -189,21 +216,7 @@ def start_DataManager_API():
     """
 
     print("Starting API Server.")
-    threadDataManager_API = DataManager_API("threadDataManager_API")
     threadDataManager_API.start()
-
-
-
-def stop_DataManager_API():
-    """ Stop DataManager API Server
-    Starts in a separate subprocess.
-
-    Args:
-
-    Returns:
-      Subprocess ID.
-    """
-
 
 
 
