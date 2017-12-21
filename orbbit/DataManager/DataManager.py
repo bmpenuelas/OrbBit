@@ -1,5 +1,5 @@
 import sys
-import threading
+from   multiprocessing import Process
 
 from   flask import Flask, jsonify, abort, make_response, request
 from   flask_httpauth import HTTPBasicAuth
@@ -31,7 +31,7 @@ def fetch_ticker():
 #############################################################################
 
 #----------------------------------------------------------------------------
-# Flask App error funcs redefinition  
+# FLASK APP error funcs redefinition  
 #----------------------------------------------------------------------------
 
 app = Flask(__name__)
@@ -166,15 +166,6 @@ def get_ticker():
 #----------------------------------------------------------------------------
 # PUBLIC METHODS
 #----------------------------------------------------------------------------
-class DataManager_API (threading.Thread):
-   def __init__(self, threadID):
-      threading.Thread.__init__(self)
-      self.threadID = threadID
-
-   def run(self):
-      print("DataManager_API STARTED with threadID " + self.name)
-      app.run(debug=False)
-      print("DataManager_API STOPPED with threadID " + self.name)
 
 
 
@@ -187,11 +178,14 @@ def start_DataManager_API():
     Returns:
       Subprocess ID.
     """
+    process_DataManager_API = Process(target=app.run(), args=('process_DataManager_API',))
 
-    print("Starting API Server.")
-    threadDataManager_API = DataManager_API("threadDataManager_API")
-    threadDataManager_API.start()
+    print("DataManager_API STARTED")
+    process_DataManager_API.start()
 
+
+def run_DataManager_API():
+    print("")
 
 
 def stop_DataManager_API():
@@ -204,6 +198,9 @@ def stop_DataManager_API():
       Subprocess ID.
     """
 
+    process_DataManager_API.terminate()
+    process_DataManager_API.join()
+    print("DataManager_API STOPPED")
 
 
 
