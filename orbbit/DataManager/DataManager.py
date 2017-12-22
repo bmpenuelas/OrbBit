@@ -31,6 +31,10 @@ def fetch_ticker():
 #----------------------------------------------------------------------------
 # DATABASE SETUP
 #----------------------------------------------------------------------------
+
+def get_datamanager_info(info):
+    return list( datamanager_info.find({info:{'$exists': True}}) )[0][info]
+
 from pkg_resources import resource_filename
 datamanager_db_route = resource_filename('orbbit', 'DataManager/datamanager_db.key')
 
@@ -41,7 +45,8 @@ datamanager_db_connection = pymongo.MongoClient(datamanager_db_key['url'], datam
 datamanager_db = datamanager_db_connection[datamanager_db_key['database']]
 datamanager_db.authenticate(datamanager_db_key['user'], datamanager_db_key['password'])
 
-fetching_symbols = ['BTC_USD',]
+datamanager_info = datamanager_db['datamanager_info']
+fetching_symbols = get_datamanager_info('fetching_symbols')
 
 
 
@@ -106,7 +111,7 @@ def get_fetching_symbols():
       Json-formatted data.
 
     """
-    return jsonify({'fetching_symbols': fetching_symbols})
+    return jsonify({'fetching_symbols': get_datamanager_info('fetching_symbols')})
 
 
 #----------------------------------------------------------------------------
@@ -115,8 +120,11 @@ def get_fetching_symbols():
 
 @app.route('/datamanager/add_fetching_symbol/<string:new_symbol>', methods=['GET'])
 def add_fetching_symbol(new_symbol):
+    fetching_symbols = get_datamanager_info('fetching_symbols')
+
     if not( new_symbol in fetching_symbols ):
         fetching_symbols.append(new_symbol)
+        datamanager_info.update_one({'fetching_symbols':{'$exists': True}}, {"$set": {'fetching_symbols':fetching_symbols}}, upsert=False)
 
     return jsonify({'fetching_symbols': fetching_symbols})
 
