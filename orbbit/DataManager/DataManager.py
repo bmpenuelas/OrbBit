@@ -16,6 +16,7 @@ import json
 # EXCHANGES SETUP
 #----------------------------------------------------------------------------
 
+#\todo Check exchange.hasFetchOHLCV
 exchange = ccxt.hitbtc2({'verbose': False})
   
 def print_markets():
@@ -71,18 +72,21 @@ class save_ohlcv (threading.Thread):
             if ohlcvs:
                 new_row = {}
                 for candle in ohlcvs:
-                  new_row['_id']      = candle[0]
-                  new_row['date8061'] = candle[0]
-                  new_row['open']     = candle[1]
-                  new_row['high']     = candle[2]
-                  new_row['low']      = candle[3]
-                  new_row['close']    = candle[4]
-                  new_row['volume']   = candle[5]
+                    new_row['_id']      = candle[0]
+                    new_row['date8061'] = candle[0]
+                    new_row['open']     = candle[1]
+                    new_row['high']     = candle[2]
+                    new_row['low']      = candle[3]
+                    new_row['close']    = candle[4]
+                    new_row['volume']   = candle[5]
                 
-                  print("Inserted ")
-                  print(collection.insert_one(new_row).inserted_id )
+                    print("Inserted " + str(new_row['date8061']))
+                    try:
+                        collection.insert_one(new_row)
+                    except pymongo.errors.DuplicateKeyError as e:
+                        print("Duplicate value, skipping.")
                   
-                  previous_fetch = time.time()*1000
+                    previous_fetch = time.time()*1000
             else:
                 print("Waiting...")
                 time.sleep(25)
