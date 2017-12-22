@@ -16,16 +16,15 @@ import json
 # EXCHANGES SETUP
 #----------------------------------------------------------------------------
 
-hitbtc = ccxt.hitbtc2({'verbose': False})
+exchange = ccxt.hitbtc2({'verbose': False})
   
 def print_markets():
-    hitbtc_markets = hitbtc.load_markets()
-    print(hitbtc.id, hitbtc_markets)
+    hitbtc_markets = exchange.load_markets()
+    print(exchange.id, hitbtc_markets)
 
 
 def fetch_ticker():
-    hitbtc = ccxt.hitbtc({'verbose': False})
-    return hitbtc.fetch_ticker('BTC/USD')
+    return exchange.fetch_ticker('BTC/USD')
 
 
 #----------------------------------------------------------------------------
@@ -47,6 +46,48 @@ datamanager_db.authenticate(datamanager_db_key['user'], datamanager_db_key['pass
 
 datamanager_info = datamanager_db['datamanager_info']
 fetching_symbols = get_datamanager_info('fetching_symbols')
+
+
+
+#############################################################################
+#                        DATAMANAGER TASKS                                  #
+#############################################################################
+
+class save_ohlcv (threading.Thread):
+    def __init__(self, symbol, curr_time_8061):
+        threading.Thread.__init__(self)
+        self.symbol = symbol
+        self.curr_time_8061 = curr_time_8061
+
+    def run(self):
+        print('Started fetcher for ' + self.symbol)
+
+        collection = datamanager_db[self.symbol]
+        previous_fetch = self.curr_time_8061
+
+        while 1:
+            ohlcvs = exchange.fetch_ohlcv(self.symbol.replace('_', '/'), '1m', previous_fetch)
+        
+            if ohlcvs:
+                new_row = {}
+                for candle in ohlcvs:
+                  new_row['_id']      = candle[0]
+                  new_row['date8061'] = candle[0]
+                  new_row['open']     = candle[1]
+                  new_row['high']     = candle[2]
+                  new_row['low']      = candle[3]
+                  new_row['close']    = candle[4]
+                  new_row['volume']   = candle[5]
+                
+                  print("Inserted ")
+                  print(collection.insert_one(new_row).inserted_id )
+                  
+                  previous_fetch = time.time()*1000
+            else:
+                print("Waiting...")
+                time.sleep(25)
+                print("Go for next...")
+
 
 
 
@@ -129,6 +170,34 @@ def add_fetching_symbol(new_symbol):
     return jsonify({'fetching_symbols': fetching_symbols})
 
 
+#----------------------------------------------------------------------------
+#   Route /datamanager/start_fetch
+#----------------------------------------------------------------------------
+
+@app.route('/datamanager/start_fetch', methods=['GET'])
+def start_fetch():
+    """ Get all data.
+    Return all data available in json format.
+
+    Args:
+
+
+    Returns:
+      Json-formatted data.
+
+    """
+    fetching_symbols = get_datamanager_info('fetching_symbols')
+    thread_save_ohlcv = [save_ohlcv(symbol, time.time()*1000) for symbol in fetching_symbols]
+
+    for symbol_fetch in thread_save_ohlcv:
+        symbol_fetch.start()
+
+
+    return jsonify({'fetching_symbols': get_datamanager_info('fetching_symbols')})
+
+
+
+# POST, PUT, DELETE examples
 @app.route('/datamanager', methods=['POST'])
 def create_task():
     if not request.json or not 'title' in request.json:
@@ -209,7 +278,7 @@ class DataManager_API (threading.Thread):
         print('DataManager_API STOPPED with threadID ' + self.name)
 
 
-threadDataManager_API = DataManager_API('threadDataManager_API')
+thread_DataManager_API = DataManager_API('thread_DataManager_API')
 
 
 
@@ -224,7 +293,7 @@ def start_DataManager_API():
     """
 
     print("Starting API Server.")
-    threadDataManager_API.start()
+    thread_DataManager_API.start()
 
 
 
