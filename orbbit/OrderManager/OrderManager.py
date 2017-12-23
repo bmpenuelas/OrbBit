@@ -13,9 +13,6 @@ class order_follow (threading.Thread):
     When selling it will wait for the peak, conversely on buys it will
     wait to reach the bottom. 
 
-    Note:
-        Do not include the `self` parameter in the ``Args`` section.
-
     Args:
         orderID (int): Order identifier (Do not repeat.)
         buysell (str): Order type. Valid options are "buy", "sell"
@@ -28,9 +25,8 @@ class order_follow (threading.Thread):
                                small spikes.
 
     Attributes:
-        
-
     """
+        
     def __init__(self, orderID, buysell, volume, m_a_samples, hysteresis=0.0, wait_hyst_exit=False ):
         if (buysell!="buy" and buysell!="sell"):
             raise ValueError("ERR: Wrong order type.")
@@ -84,4 +80,25 @@ class order_follow (threading.Thread):
             curr_val = np.mean( samples_vect[i:self.m_a_samples+i] )
             curr_slope = curr_val - prev_val
             prev_val = curr_val
+
+
+
+#############################################################################
+#                          MATH OPERATIONS                                  #
+#############################################################################
+
+class EMA():
+    """ Calculate new EMA value from current value and a window of prev vals.
+    """
+    def __init__(self, value, window):
+        self.window = window
+        self.weights = np.exp(np.linspace(-1., 0., window))
+        self.weights /= self.weights.sum()
+        self.values = np.linspace(value, value, window)
+
+    def updt(new_val):
+        self.values = self.values[:-1].append(new_val)
+        a =  np.convolve(self.values, self.weights, mode='full')[:len(self.values)]
+        a[:window] = a[window]
+        return a[-1]
 

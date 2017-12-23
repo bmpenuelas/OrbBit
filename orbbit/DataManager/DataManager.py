@@ -2,6 +2,8 @@ import sys
 import time
 import threading
 
+import numpy as np
+
 from   flask import Flask, jsonify, abort, make_response, request
 from   flask_httpauth import HTTPBasicAuth
 
@@ -33,7 +35,25 @@ def fetch_ticker():
 #----------------------------------------------------------------------------
 
 def get_datamanager_info(info):
-    return list( datamanager_info.find({info:{'$exists': True}}) )[0][info]
+    """Get the 'info' field from the 'datamanager_info' collection.
+
+    It stores parameters that should be kept between runs of the program.
+
+    Args:
+        info (str): info field identifier
+
+    Returns:
+        Structure stored under 'info'. Can be any data structure.
+    """
+
+    try:
+
+        return list( datamanager_info.find({info:{'$exists': True}}) )[0][info]
+    except IndexError:
+        datamanager_info.insert_one( {'fetching_symbols':['BTC/USD', 'ETH/USD',], } )
+        return list( datamanager_info.find({info:{'$exists': True}}) )[0][info]
+
+
 
 from pkg_resources import resource_filename
 datamanager_db_route = resource_filename('orbbit', 'DataManager/datamanager_db.key')
@@ -54,7 +74,29 @@ fetching_symbols = get_datamanager_info('fetching_symbols')
 #                        DATAMANAGER TASKS                                  #
 #############################################################################
 
-class save_ohlcv (threading.Thread):
+def start_fetch():
+    """ Start the fetcher.
+    Return all data available in json format.
+
+    Args:
+
+
+    Returns:
+      Json-formatted data.
+
+    """
+    fetching_symbols = get_datamanager_info('fetching_symbols')
+    thread_save_ohlcv = [save_ohlcv(symbol, time.time()*1000) for symbol in fetching_symbols]
+
+    for symbol_fetch in thread_save_ohlcv:
+        symbol_fetch.start()
+
+
+    return jsonify({'fetching_symbols': get_datamanager_info('fetching_symbols')})
+
+
+
+class save_ohlcv(threading.Thread):
     def __init__(self, symbol, curr_time_8061):
         threading.Thread.__init__(self)
         self.symbol = symbol
@@ -64,10 +106,10 @@ class save_ohlcv (threading.Thread):
         print('Started fetcher for ' + self.symbol)
 
         collection = datamanager_db[self.symbol]
-        previous_fetch = self.curr_time_8061
+        nxt_fetch = self.curr_time_8061
 
         while 1:
-            ohlcvs = exchange.fetch_ohlcv(self.symbol.replace('_', '/'), '1m', previous_fetch)
+            ohlcvs = exchange.fetch_ohlcv(self.symbol.replace('_', '/'), '1m', nxt_fetch)
         
             if ohlcvs:
                 new_row = {}
@@ -86,11 +128,9 @@ class save_ohlcv (threading.Thread):
                     except pymongo.errors.DuplicateKeyError as e:
                         print("Duplicate value, skipping.")
                   
-                    previous_fetch = time.time()*1000
+                    nxt_fetch += 60 * 1000
             else:
-                print("Waiting...")
-                time.sleep(25)
-                print("Go for next...")
+                time.sleep(10)
 
 
 
@@ -160,44 +200,38 @@ def get_fetching_symbols():
 
 
 #----------------------------------------------------------------------------
-#   Route /datamanager/add_fetching_symbol/
+#   Route /datamanager/fetch
 #----------------------------------------------------------------------------
 
-@app.route('/datamanager/add_fetching_symbol/<string:new_symbol>', methods=['GET'])
+@app.route('/datamanager/fetch', methods=['GET'])
+def fetch():
+    return jsonify({'fetching_symbols': get_datamanager_info('fetching_symbols')})
+
+
+#----------------------------------------------------------------------------
+#   Route /datamanager/fetch/start
+#----------------------------------------------------------------------------
+
+@app.route('/datamanager/fetch/start', methods=['GET'])
+def fetch_start():
+    return start_fetch()
+
+
+#----------------------------------------------------------------------------
+#   Route /datamanager/fetch/add
+#----------------------------------------------------------------------------
+
+@app.route('/datamanager/fetch/add/<string:new_symbol>', methods=['GET'])
 def add_fetching_symbol(new_symbol):
     fetching_symbols = get_datamanager_info('fetching_symbols')
 
-    if not( new_symbol in fetching_symbols ):
-        fetching_symbols.append(new_symbol)
-        datamanager_info.update_one({'fetching_symbols':{'$exists': True}}, {"$set": {'fetching_symbols':fetching_symbols}}, upsert=False)
+    if not( new_symbol.replace('_', '/') in fetching_symbols ):
+        fetching_symbols.append(new_symbol.replace('_', '/'))
+        datamanager_info.update_one({'fetching_symbols':{'$exists': True}}, {"$set": {'fetching_symbols':fetching_symbols, } }, upsert=True)
+        new_symbol_fetcher = save_ohlcv(new_symbol.replace('_', '/'), time.time()*1000)
+        new_symbol_fetcher.start()
 
     return jsonify({'fetching_symbols': fetching_symbols})
-
-
-#----------------------------------------------------------------------------
-#   Route /datamanager/start_fetch
-#----------------------------------------------------------------------------
-
-@app.route('/datamanager/start_fetch', methods=['GET'])
-def start_fetch():
-    """ Get all data.
-    Return all data available in json format.
-
-    Args:
-
-
-    Returns:
-      Json-formatted data.
-
-    """
-    fetching_symbols = get_datamanager_info('fetching_symbols')
-    thread_save_ohlcv = [save_ohlcv(symbol, time.time()*1000) for symbol in fetching_symbols]
-
-    for symbol_fetch in thread_save_ohlcv:
-        symbol_fetch.start()
-
-
-    return jsonify({'fetching_symbols': get_datamanager_info('fetching_symbols')})
 
 
 
