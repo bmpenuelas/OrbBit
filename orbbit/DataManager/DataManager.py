@@ -109,7 +109,13 @@ class save_ohlcv(threading.Thread):
         nxt_fetch = self.curr_time_8061
 
         while 1:
-            ohlcvs = exchange.fetch_ohlcv(self.symbol.replace('_', '/'), '1m', nxt_fetch)
+            fetch_from_API_success = 0
+            while not(fetch_from_API_success):
+                try:
+                    ohlcvs = exchange.fetch_ohlcv(self.symbol.replace('_', '/'), '1m', nxt_fetch)
+                    fetch_from_API_success = 1
+                except:
+                    time.sleep(1)
         
             if ohlcvs:
                 new_row = {}

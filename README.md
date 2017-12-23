@@ -33,6 +33,12 @@ pip install -e .
 
 
 
+Keys for the API, database and exchanges are not in version control. To generate them, place the privately-shared folder at the same level as the OrbBit package.
+```
+OrbBit
+OrbBit_noVC
+```
+
 To launch the Spyder IDE, always make sure you do it from inside the correct environment:
 ```
 activate orb_conda
