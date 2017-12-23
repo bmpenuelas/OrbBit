@@ -2,6 +2,8 @@ OrbBit - look a bit into the future
 ===================================
 The OrbBit API empowers robots to perform analysis and automatic trading on cryptocurrency markets.
 
+![alt text](./docs/diagrams/OrbBit_Block_Diagram.png)
+
 It contains all the functions that:
  - May be used by several robots, so that they are implemented only once. 
  - Optimize operation of the robots, like data acquisition, which has to be done only once for all the robots.
