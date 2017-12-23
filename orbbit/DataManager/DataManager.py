@@ -50,7 +50,7 @@ def get_datamanager_info(info):
 
         return list( datamanager_info.find({info:{'$exists': True}}) )[0][info]
     except IndexError:
-        datamanager_info.insert_one( {'fetching_symbols':['BTC/USD', 'ETH/USD',], } )
+        datamanager_info.insert_one( {'fetching_symbols':[{'BTC/USD':['1m', '3m', '5m',]}, {'ETH/USD':['1m', '3m', '5m',]},], } )
         return list( datamanager_info.find({info:{'$exists': True}}) )[0][info]
 
 
@@ -86,7 +86,8 @@ def start_fetch():
 
     """
     fetching_symbols = get_datamanager_info('fetching_symbols')
-    thread_save_ohlcv = [save_ohlcv(symbol, time.time()*1000) for symbol in fetching_symbols]
+    for symbol, timeframe in fetching_symbols:
+        thread_save_ohlcv = save_ohlcv(symbol, timeframe, time.time()*1000)
 
     for symbol_fetch in thread_save_ohlcv:
         symbol_fetch.start()
@@ -97,9 +98,10 @@ def start_fetch():
 
 
 class save_ohlcv(threading.Thread):
-    def __init__(self, symbol, curr_time_8061):
+    def __init__(self, symbol, timeframe, curr_time_8061):
         threading.Thread.__init__(self)
         self.symbol = symbol
+        self.timeframe = timeframe
         self.curr_time_8061 = curr_time_8061
 
     def run(self):
@@ -112,7 +114,7 @@ class save_ohlcv(threading.Thread):
             fetch_from_API_success = 0
             while not(fetch_from_API_success):
                 try:
-                    ohlcvs = exchange.fetch_ohlcv(self.symbol.replace('_', '/'), '1m', nxt_fetch)
+                    ohlcvs = exchange.fetch_ohlcv(self.symbol.replace('_', '/'), self.timeframe, nxt_fetch)
                     fetch_from_API_success = 1
                 except:
                     time.sleep(1)
@@ -227,14 +229,15 @@ def fetch_start():
 #   Route /datamanager/fetch/add
 #----------------------------------------------------------------------------
 
-@app.route('/datamanager/fetch/add/<string:new_symbol>', methods=['GET'])
-def add_fetching_symbol(new_symbol):
+@app.route('/datamanager/fetch/add/<string:new_symbol>,<string:timeframe>', methods=['GET'])
+def add_fetching_symbol(new_symbol, timeframe):
+    symbol_to_add = new_symbol.replace('_', '/')
     fetching_symbols = get_datamanager_info('fetching_symbols')
 
-    if not( new_symbol.replace('_', '/') in fetching_symbols ):
-        fetching_symbols.append(new_symbol.replace('_', '/'))
+    if any(new_symbol in symbol_timeframes for symbol_timeframes in fetching_symbols):
+        fetching_symbols.append(symbol_to_add)
         datamanager_info.update_one({'fetching_symbols':{'$exists': True}}, {"$set": {'fetching_symbols':fetching_symbols, } }, upsert=True)
-        new_symbol_fetcher = save_ohlcv(new_symbol.replace('_', '/'), time.time()*1000)
+        new_symbol_fetcher = save_ohlcv(symbol_to_add, timeframe, time.time()*1000)
         new_symbol_fetcher.start()
 
     return jsonify({'fetching_symbols': fetching_symbols})
