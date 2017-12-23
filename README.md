@@ -12,7 +12,7 @@ Since it's developed in python, it takes advantage of a huge amount of resources
 
 
 
-Local instal (for development)
+Local install (for development)
 ------------------------------
 This is the most convenient way to develop the API or Robots. You will have the Orbbit package installed via symlink so it will reflect changes as you work. The Spyder IDE will make developmente hugely more comfortable.
 
