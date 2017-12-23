@@ -56,7 +56,9 @@ DataManager_API STARTED with threadID Thread-6
 
 
 Now you can go to these addresses right from your brower. That will start all the previously loaded fetchers, plus ETC_USD in this example.
+
 http://127.0.0.1:5000/datamanager/fetch/start
+
 http://127.0.0.1:5000/datamanager/fetch/add/ETC_USD
 ```
 127.0.0.1 - - [23/Dec/2017 15:07:41] "GET /datamanager/fetch/add/ETC_USD HTTP/1.1" 200 -
