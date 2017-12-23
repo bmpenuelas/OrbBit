@@ -28,14 +28,7 @@ conda create -n orb_conda anaconda spyder
 activate orb_conda
 ```
 
-3- cd to the OrbBit package dir and install it
-```
-pip install -e .
-```
-
-
-
-Keys for the API, database and exchanges are not in version control. To generate them, place the privately-shared folder at the same level as the OrbBit package.
+3- Keys for the API, database and exchanges are not in version control. To generate them, place the privately-shared folder at the same level as the OrbBit package.
 ```
 OrbBit
 OrbBit_noVC
@@ -46,6 +39,12 @@ Now run run_me.py and all the keys will be generated and placed in the appropria
 cd OrbBit_noVC
 python run_me.py
 ```
+
+4- cd to the OrbBit package dir and install it
+```
+pip install -e .
+```
+
 
 
 
