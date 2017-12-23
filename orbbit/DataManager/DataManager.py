@@ -40,18 +40,20 @@ def get_datamanager_info(info):
     It stores parameters that should be kept between runs of the program.
 
     Args:
-        info (str): info field identifier
+        info (str): info field identifier.
+            Valid identifiers:
+                'fetching_symbols' dict key : PAIR 
+                                   dict val : list TIMEFRAMES
 
     Returns:
         Structure stored under 'info'. Can be any data structure.
     """
 
     try:
-
-        return list( datamanager_info.find({info:{'$exists': True}}) )[0][info]
+        return datamanager_info.find( {info:{'$exists': True}} )[0][info]
     except IndexError:
-        datamanager_info.insert_one( {'fetching_symbols':[{'BTC/USD':['1m', '3m', '5m',]}, {'ETH/USD':['1m', '3m', '5m',]},], } )
-        return list( datamanager_info.find({info:{'$exists': True}}) )[0][info]
+        datamanager_info.insert_one( {'fetching_symbols':{'BTC/USD':['1m', '3m', '5m',], 'ETH/USD':['1m', '3m', '5m',],} } )
+        return datamanager_info.find( {info:{'$exists': True}} )[0][info]
 
 
 
@@ -86,12 +88,10 @@ def start_fetch():
 
     """
     fetching_symbols = get_datamanager_info('fetching_symbols')
-    for symbol, timeframe in fetching_symbols:
-        thread_save_ohlcv = save_ohlcv(symbol, timeframe, time.time()*1000)
-
-    for symbol_fetch in thread_save_ohlcv:
-        symbol_fetch.start()
-
+    for symbol in fetching_symbols:
+        for timeframe in fetching_symbols[symbol]:
+            thread_save_ohlcv = save_ohlcv(symbol, timeframe, time.time()*1000)
+            thread_save_ohlcv.start()
 
     return jsonify({'fetching_symbols': get_datamanager_info('fetching_symbols')})
 
@@ -122,13 +122,14 @@ class save_ohlcv(threading.Thread):
             if ohlcvs:
                 new_row = {}
                 for candle in ohlcvs:
-                    new_row['_id']      = candle[0]
-                    new_row['date8061'] = candle[0]
-                    new_row['open']     = candle[1]
-                    new_row['high']     = candle[2]
-                    new_row['low']      = candle[3]
-                    new_row['close']    = candle[4]
-                    new_row['volume']   = candle[5]
+                    new_row['_id']       = candle[0]+self.timeframe
+                    new_row['timeframe'] = self.timeframe
+                    new_row['date8061']  = candle[0]
+                    new_row['open']      = candle[1]
+                    new_row['high']      = candle[2]
+                    new_row['low']       = candle[3]
+                    new_row['close']     = candle[4]
+                    new_row['volume']    = candle[5]
                 
                     print("Inserted " + str(new_row['date8061']))
                     try:
@@ -234,11 +235,12 @@ def add_fetching_symbol(new_symbol, timeframe):
     symbol_to_add = new_symbol.replace('_', '/')
     fetching_symbols = get_datamanager_info('fetching_symbols')
 
-    if any(new_symbol in symbol_timeframes for symbol_timeframes in fetching_symbols):
-        fetching_symbols.append(symbol_to_add)
-        datamanager_info.update_one({'fetching_symbols':{'$exists': True}}, {"$set": {'fetching_symbols':fetching_symbols, } }, upsert=True)
-        new_symbol_fetcher = save_ohlcv(symbol_to_add, timeframe, time.time()*1000)
-        new_symbol_fetcher.start()
+    if new_symbol in fetching_symbols:
+        if timeframe not in fetching_symbols[symbol_to_add]:
+            fetching_symbols[symbol_to_add].append(timeframe)
+            datamanager_info.update_one({'fetching_symbols':{'$exists': True}}, {"$set": {'fetching_symbols':fetching_symbols, } }, upsert=True)
+            new_symbol_fetcher = save_ohlcv(symbol_to_add, timeframe, time.time()*1000)
+            new_symbol_fetcher.start()
 
     return jsonify({'fetching_symbols': fetching_symbols})
 
