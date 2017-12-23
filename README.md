@@ -41,6 +41,14 @@ OrbBit
 OrbBit_noVC
 ```
 
+Now run run_me.py and all the keys will be generated and placed in the appropriate directory
+```
+cd OrbBit_noVC
+python run_me.py
+```
+
+
+
 To launch the Spyder IDE, always make sure you do it from inside the correct environment:
 ```
 activate orb_conda
