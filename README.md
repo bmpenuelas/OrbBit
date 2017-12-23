@@ -1,8 +1,6 @@
 OrbBit - look a bit into the future
 ===================================
-
-
-The OrbBit API is a means, not an end. It's a development accelerator for the robots that perform analysis and automatic trading.
+The OrbBit API empowers robots to perform analysis and automatic trading on cryptocurrency markets.
 
 It contains all the functions that:
  - May be used by several robots, so that they are implemented only once. 
@@ -57,7 +55,9 @@ DataManager_API STARTED with threadID Thread-6
 ```
 
 
-Now you can go to http://127.0.0.1:5000/datamanager/fetch/start and http://127.0.0.1:5000/datamanager/fetch/add/ETC_USD in your browser, that will start all the previously loaded fetchers, plus ETC_USD
+Now you can go to these addresses right from your brower. That will start all the previously loaded fetchers, plus ETC_USD in this example.
+http://127.0.0.1:5000/datamanager/fetch/start
+http://127.0.0.1:5000/datamanager/fetch/add/ETC_USD
 ```
 127.0.0.1 - - [23/Dec/2017 15:07:41] "GET /datamanager/fetch/add/ETC_USD HTTP/1.1" 200 -
 Started fetcher for ETC/USD
