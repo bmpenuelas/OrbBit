@@ -125,15 +125,16 @@ class save_ohlcv(threading.Thread):
         self.timeframe = timeframe
         self.curr_time_8061 = curr_time_8061
 
+        self.fetch_interval = int(timeframe_to_ms(self.timeframe)*0.9)
+        self.retry_on_xchng_err_interval = 1
+
     def run(self):
         print('Started fetcher for ' + self.symbol +' '+ self.timeframe)
 
         collection = datamanager_db[self.symbol_db]
-        # print(collection)
         nxt_fetch = self.curr_time_8061
 
         while 1:
-            print('While ' + self.symbol +' '+ self.timeframe)
             fetch_from_API_success = 0
             while not(fetch_from_API_success):
                 try:
@@ -141,7 +142,7 @@ class save_ohlcv(threading.Thread):
                     ohlcv = exchange.fetch_ohlcv(self.symbol, self.timeframe, nxt_fetch)
                     fetch_from_API_success = 1
                 except:
-                    time.sleep(1)
+                    time.sleep(self.retry_on_xchng_err_interval)
         
             if ohlcv:
                 new_row = {}
@@ -156,16 +157,15 @@ class save_ohlcv(threading.Thread):
                 
                     new_document = {'ohlcv':new_row, '_id':(str(self.timeframe) + '_' + str(candle[0]))}
 
-                    print("Fetched OHLCV " + self.symbol + self.timeframe + str(new_row['date8061']))
+                    print("Fetched OHLCV " + self.symbol + new_document['_id'])
 
                     try:
                         collection.insert_one(new_document)
                     except pymongo.errors.DuplicateKeyError as e:
                         print("Duplicate value, skipping.")
                   
-                    nxt_fetch += timeframe_to_ms(self.timeframe)
-            else:
-                time.sleep(10)
+                    nxt_fetch += self.fetch_interval
+                    time.sleep( self.fetch_interval / 1000 )
 
 
 
@@ -277,16 +277,23 @@ def fetch_commands(command):
 
     # Command <add>
     elif command == 'add':
-        symbol = request.args.get('symbol').replace('_', '/')
+        symbol = request.json['symbol']
         timeframe = request.json['timeframe']
+
         fetching_symbols = get_datamanager_info('fetching_symbols')
 
         if symbol in fetching_symbols:
+            print(fetching_symbols[symbol])
             if timeframe not in fetching_symbols[symbol]:
                 fetching_symbols[symbol].append(timeframe)
                 datamanager_info.update_one({'fetching_symbols':{'$exists': True}}, {"$set": {'fetching_symbols':fetching_symbols, } }, upsert=True)
                 new_symbol_fetcher = save_ohlcv(symbol, timeframe, time.time()*1000)
                 new_symbol_fetcher.start()
+        else:
+            fetching_symbols[symbol] = [timeframe]
+            datamanager_info.update_one({'fetching_symbols':{'$exists': True}}, {"$set": {'fetching_symbols':fetching_symbols, } }, upsert=True)
+            new_symbol_fetcher = save_ohlcv(symbol, timeframe, time.time()*1000)
+            new_symbol_fetcher.start()
 
         return jsonify({'fetching_symbols': fetching_symbols})
 
