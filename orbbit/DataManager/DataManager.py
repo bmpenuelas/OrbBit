@@ -129,10 +129,11 @@ class save_ohlcv(threading.Thread):
         print('Started fetcher for ' + self.symbol +' '+ self.timeframe)
 
         collection = datamanager_db[self.symbol_db]
-        print(collection)
+        # print(collection)
         nxt_fetch = self.curr_time_8061
 
         while 1:
+            print('While ' + self.symbol +' '+ self.timeframe)
             fetch_from_API_success = 0
             while not(fetch_from_API_success):
                 try:
@@ -153,7 +154,7 @@ class save_ohlcv(threading.Thread):
                     new_row['close']     = candle[4]
                     new_row['volume']    = candle[5]
                 
-                    new_document = {'ohlcv':new_row, '_id':(self.timeframe + '_' + candle[0])}
+                    new_document = {'ohlcv':new_row, '_id':(str(self.timeframe) + '_' + str(candle[0]))}
 
                     print("Fetched OHLCV " + self.symbol + self.timeframe + str(new_row['date8061']))
 
