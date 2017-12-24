@@ -35,7 +35,7 @@ def fetch_ticker():
 #----------------------------------------------------------------------------
 
 def get_datamanager_info(info):
-    """Get the 'info' field from the 'datamanager_info' collection.
+    """Get the 'info' field from the 'datamanager_info' collection at the db.
 
     It stores parameters that should be kept between runs of the program.
 
@@ -43,7 +43,7 @@ def get_datamanager_info(info):
         info (str): info field identifier.
             Valid identifiers:
                 'fetching_symbols' dict key : PAIR 
-                                   dict val : list TIMEFRAMES
+                                   dict val : list TIMEFRAME
 
     Returns:
         Structure stored under 'info'. Can be any data structure.
@@ -72,19 +72,39 @@ fetching_symbols = get_datamanager_info('fetching_symbols')
 
 
 
+#----------------------------------------------------------------------------
+# Generic functions
+#----------------------------------------------------------------------------
+
+def timeframe_to_ms(timeframe):
+    """ Convert from readable string to milliseconds.
+    Args:
+
+        timeframe (str): Valid values:
+                             '*m' minutes
+                             '*s' seconds
+    Returns:
+    """
+    if 'm' in timeframe:
+        return int(timeframe.replace('m', '')) * 60 * 1000
+    elif 's' in timeframe:
+        return int(timeframe.replace('s', '')) * 1000
+    else:
+        raise ValueError('Invalid representation.')
+
+
+
 #############################################################################
 #                        DATAMANAGER TASKS                                  #
 #############################################################################
 
 def start_fetch():
     """ Start the fetcher.
-    Return all data available in json format.
 
     Args:
 
-
     Returns:
-      Json-formatted data.
+      List of symbols that are being fetched.
 
     """
     fetching_symbols = get_datamanager_info('fetching_symbols')
@@ -101,28 +121,30 @@ class save_ohlcv(threading.Thread):
     def __init__(self, symbol, timeframe, curr_time_8061):
         threading.Thread.__init__(self)
         self.symbol = symbol
+        self.symbol_db = symbol.replace('/', '_')
         self.timeframe = timeframe
         self.curr_time_8061 = curr_time_8061
 
     def run(self):
-        print('Started fetcher for ' + self.symbol)
+        print('Started fetcher for ' + self.symbol +' '+ self.timeframe)
 
-        collection = datamanager_db[self.symbol]
+        collection = datamanager_db[self.symbol_db]
+        print(collection)
         nxt_fetch = self.curr_time_8061
 
         while 1:
             fetch_from_API_success = 0
             while not(fetch_from_API_success):
                 try:
-                    ohlcvs = exchange.fetch_ohlcv(self.symbol.replace('_', '/'), self.timeframe, nxt_fetch)
+                    print('Exchange query for ' + self.symbol +' '+ self.timeframe)
+                    ohlcv = exchange.fetch_ohlcv(self.symbol, self.timeframe, nxt_fetch)
                     fetch_from_API_success = 1
                 except:
                     time.sleep(1)
         
-            if ohlcvs:
+            if ohlcv:
                 new_row = {}
-                for candle in ohlcvs:
-                    new_row['_id']       = candle[0]+self.timeframe
+                for candle in ohlcv:
                     new_row['timeframe'] = self.timeframe
                     new_row['date8061']  = candle[0]
                     new_row['open']      = candle[1]
@@ -131,17 +153,34 @@ class save_ohlcv(threading.Thread):
                     new_row['close']     = candle[4]
                     new_row['volume']    = candle[5]
                 
-                    print("Inserted " + str(new_row['date8061']))
+                    new_document = {'ohlcv':new_row, '_id':(self.timeframe + '_' + candle[0])}
+
+                    print("Fetched OHLCV " + self.symbol + self.timeframe + str(new_row['date8061']))
+
                     try:
-                        collection.insert_one(new_row)
+                        collection.insert_one(new_document)
                     except pymongo.errors.DuplicateKeyError as e:
                         print("Duplicate value, skipping.")
                   
-                    nxt_fetch += 60 * 1000
+                    nxt_fetch += timeframe_to_ms(self.timeframe)
             else:
                 time.sleep(10)
 
 
+
+def fill_ohlcv(symbol, timeframe, from_millis, to_millis):
+    """ Attempt to fill gaps in the DataManager database by fetching many data at once.
+        It is limited by how back in time the exchange API provides data.
+    
+    Args:
+        symbol, timeframe, from_millis, to_millis: See save_ohlcv.
+    Returns:
+        filled: gaps successfully filled.
+        missing: gaps that could not be filled.
+    """
+
+    # \todo
+    return {'filled':filled, 'missing':missing}
 
 
 #############################################################################
@@ -194,17 +233,14 @@ def unauthorized():
 #----------------------------------------------------------------------------
 
 @app.route('/datamanager', methods=['GET'])
-def get_fetching_symbols():
-    """ Get all data.
-    Return all data available in json format.
-
+def datamanager_status():
+    """ Get datamanager status.
     Args:
 
-
     Returns:
-      Json-formatted data.
-
+        Status of the DataManager API and processes.
     """
+
     return jsonify({'fetching_symbols': get_datamanager_info('fetching_symbols')})
 
 
@@ -218,77 +254,92 @@ def fetch():
 
 
 #----------------------------------------------------------------------------
-#   Route /datamanager/fetch/start
+#   Route /datamanager/fetch/<command>
 #----------------------------------------------------------------------------
 
-@app.route('/datamanager/fetch/start', methods=['GET'])
-def fetch_start():
-    return start_fetch()
+@app.route('/datamanager/fetch/<string:command>', methods=['GET'])
+def fetch_commands(command):
+    """ Fetcher commands.
+    Args:
+        start: starts one fetcher per symbol and timeframe as set in fetching_symbols.
+
+        add: add new symbol/timeframe fetcher and start it.
+
+    Returns:
+        Symbols/timeframes being fetched.
+    """
+
+    # Command <start>
+    if command == 'start':
+        return start_fetch()
+
+
+    # Command <add>
+    elif command == 'add':
+        symbol = request.args.get('symbol').replace('_', '/')
+        timeframe = request.json['timeframe']
+        fetching_symbols = get_datamanager_info('fetching_symbols')
+
+        if symbol in fetching_symbols:
+            if timeframe not in fetching_symbols[symbol]:
+                fetching_symbols[symbol].append(timeframe)
+                datamanager_info.update_one({'fetching_symbols':{'$exists': True}}, {"$set": {'fetching_symbols':fetching_symbols, } }, upsert=True)
+                new_symbol_fetcher = save_ohlcv(symbol, timeframe, time.time()*1000)
+                new_symbol_fetcher.start()
+
+        return jsonify({'fetching_symbols': fetching_symbols})
+
+    else:
+        return jsonify({'error': 'Invalid command.'})
+
+
 
 
 #----------------------------------------------------------------------------
-#   Route /datamanager/fetch/add
+#   Route /datamanager/get
 #----------------------------------------------------------------------------
 
-@app.route('/datamanager/fetch/add/<string:new_symbol>,<string:timeframe>', methods=['GET'])
-def add_fetching_symbol(new_symbol, timeframe):
-    symbol_to_add = new_symbol.replace('_', '/')
-    fetching_symbols = get_datamanager_info('fetching_symbols')
+@app.route('/datamanager/get', methods=['GET'])
+def get():
+    """ Show DataManager block available data.
+    Args:
 
-    if new_symbol in fetching_symbols:
-        if timeframe not in fetching_symbols[symbol_to_add]:
-            fetching_symbols[symbol_to_add].append(timeframe)
-            datamanager_info.update_one({'fetching_symbols':{'$exists': True}}, {"$set": {'fetching_symbols':fetching_symbols, } }, upsert=True)
-            new_symbol_fetcher = save_ohlcv(symbol_to_add, timeframe, time.time()*1000)
-            new_symbol_fetcher.start()
+    Returns:
+      
+    """
 
-    return jsonify({'fetching_symbols': fetching_symbols})
+    # \todo List of available data, fetched and processed
 
+    return jsonify({'fetching_symbols': get_datamanager_info('fetching_symbols')})
 
 
-# POST, PUT, DELETE examples
-@app.route('/datamanager', methods=['POST'])
-def create_task():
-    if not request.json or not 'title' in request.json:
-        print(request.json)
-        abort(400)
-    task = {
-        'id': tasks[-1]['id'] + 1,
-        'title': request.json['title'],
-        'description': request.json.get('description', ""),
-        'done': False
-    }
-    tasks.append(task)
-    return jsonify({'task': task}), 201
+#----------------------------------------------------------------------------
+#   Route /datamanager/get/<command>
+#----------------------------------------------------------------------------
+@app.route('/datamanager/get/<string:command>', methods=['GET'])
+def get_commands(command):
+    """ Serve the data collected by the DataManager block.
+    Args:
 
+    Returns:
+        Requested data.
+    """
 
-@app.route('/datamanager/<int:task_id>', methods=['PUT'])
-def update_task(task_id):
-    task = [task for task in tasks if task['id'] == task_id]
-    if len(task) == 0:
-        abort(404)
-    if not request.json:
-        abort(400)
-    if 'title' in request.json and type(request.json['title']) != unicode:
-        abort(400)
-    if 'description' in request.json and type(request.json['description']) is not unicode:
-        abort(400)
-    if 'done' in request.json and type(request.json['done']) is not bool:
-        abort(400)
-    task[0]['title'] = request.json.get('title', task[0]['title'])
-    task[0]['description'] = request.json.get('description', task[0]['description'])
-    task[0]['done'] = request.json.get('done', task[0]['done'])
-    return jsonify({'task': task[0]})
+    # Command <ohlc>
+    if command == 'ohlc':
+        symbol = request.args.get('symbol').replace('_', '/')
+        timeframe = request.json['timeframe']
+        from_millis = request.json['from']
+        to_millis = request.json['to']
 
+        # \todo
+        # busca en db
+        # retorna o error
 
-@app.route('/datamanager/<int:task_id>', methods=['DELETE'])
-@auth.login_required
-def delete_task(task_id):
-    task = [task for task in tasks if task['id'] == task_id]
-    if len(task) == 0:
-        abort(404)
-    tasks.remove(task[0])
-    return jsonify({'result': True})
+        return jsonify({'fetching_symbols': fetching_symbols})
+
+    else:
+        return jsonify({'error': 'Data not available.'})
 
 
 
@@ -302,11 +353,10 @@ def get_ticker():
 
     Args:
 
-
     Returns:
       Json-formatted data.
-
     """
+
     return jsonify({'ticker': fetch_ticker()})
 
 
