@@ -47,11 +47,13 @@ print(len(ohlcv))
 date8061 = [ row['date8061'] for row in ohlcv]
 close = [ row['ohlcv']['close'] for row in ohlcv]
 
-plt.plot(close)
+plt.plot(date8061, close)
 
 
-ema = ExpMovingAverage(close,12)
-plt.plot(ema)
+ema = ExpMovingAverage(close,5)
+plt.plot(date8061, ema)
+
+
 
 
 plt.show()
