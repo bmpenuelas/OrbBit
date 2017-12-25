@@ -94,6 +94,27 @@ def timeframe_to_ms(timeframe):
 
 
 
+def candle_to_document(candle, timeframe):
+    """ Convert exchange candles (ohlcv) to database documents.
+    Args:
+        candle: as output by ccxt ohlcv
+        timeframe: see timeframe_to_ms for valid values
+    Returns:
+        document for MongoDB.
+    """
+    new_row = {}
+    new_row['timeframe'] = timeframe
+    new_row['date8061']  = candle[0]
+    new_row['open']      = candle[1]
+    new_row['high']      = candle[2]
+    new_row['low']       = candle[3]
+    new_row['close']     = candle[4]
+    new_row['volume']    = candle[5]
+
+    return {'ohlcv':new_row, '_id':(timeframe + '_' + str(candle[0]))}
+
+
+
 #############################################################################
 #                        DATAMANAGER TASKS                                  #
 #############################################################################
@@ -145,17 +166,8 @@ class save_ohlcv(threading.Thread):
                     time.sleep(self.retry_on_xchng_err_interval)
         
             if ohlcv:
-                new_row = {}
                 for candle in ohlcv:
-                    new_row['timeframe'] = self.timeframe
-                    new_row['date8061']  = candle[0]
-                    new_row['open']      = candle[1]
-                    new_row['high']      = candle[2]
-                    new_row['low']       = candle[3]
-                    new_row['close']     = candle[4]
-                    new_row['volume']    = candle[5]
-                
-                    new_document = {'ohlcv':new_row, '_id':(str(self.timeframe) + '_' + str(candle[0]))}
+                    new_document = candle_to_document(candle)
 
                     print("Fetched OHLCV " + self.symbol + new_document['_id'])
 
@@ -169,19 +181,48 @@ class save_ohlcv(threading.Thread):
 
 
 
-def fill_ohlcv(symbol, timeframe, from_millis, to_millis):
+def fill_ohlcv(symbol, timeframe, from_millis):
     """ Attempt to fill gaps in the DataManager database by fetching many data at once.
         It is limited by how back in time the exchange API provides data.
-    
+
+    Example:
+        fill_ohlcv('BTC/USD', '5m', exchange.parse8601('2017-01-24 00:00:00'))
     Args:
-        symbol, timeframe, from_millis, to_millis: See save_ohlcv.
+        symbol, timeframe, from_millis: See save_ohlcv.
     Returns:
         filled: gaps successfully filled.
         missing: gaps that could not be filled.
     """
 
-    # \todo
-    return {'filled':filled, 'missing':missing}
+    symbol_db = symbol.replace('/', '_')
+    collection = datamanager_db[symbol_db]
+
+    retry_on_xchng_err_interval = 1
+    
+    filled = 0
+    fetch_from_API_success = 0
+    while not fetch_from_API_success:
+        try:
+            print('Filling ' + symbol +' '+ timeframe)
+            ohlcv = exchange.fetch_ohlcv(symbol, timeframe, since=from_millis)
+            fetch_from_API_success = 1
+        except:
+            print('Exchange ERR. Could not load data to fill OHLCV')
+            time.sleep(retry_on_xchng_err_interval)
+
+    for candle in ohlcv:
+        new_document = candle_to_document(candle, timeframe)
+        try:
+            collection.insert_one(new_document)
+            print('Filling ' + symbol + timeframe + str(new_document['ohlcv']['date8061']))
+            filled += 1
+        except pymongo.errors.DuplicateKeyError as e:
+            pass
+        
+    # \todo chech for holes in data
+    return filled
+
+
 
 
 #############################################################################
