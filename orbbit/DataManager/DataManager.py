@@ -22,8 +22,8 @@ import json
 exchange = ccxt.hitbtc2({'verbose': False})
   
 def print_markets():
-    hitbtc_markets = exchange.load_markets()
-    print(exchange.id, hitbtc_markets)
+    markets = exchange.load_markets()
+    print(exchange.id, markets)
 
 
 def fetch_ticker():
