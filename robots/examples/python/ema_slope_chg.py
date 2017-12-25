@@ -53,6 +53,18 @@ plt.plot(date8061, close)
 ema = ExpMovingAverage(close,5)
 plt.plot(date8061, ema)
 
+ema_slope_chgs = []
+
+i = 1
+up = 1 if ema[i] > ema[i-1] else 0
+
+while i < len(ema)-1:
+    if (up and (ema[i] < ema[i-1])) or (not up and (ema[i] > ema[i-1])):
+        up = not up
+        
+        ema_slope_chgs.append(date8061[i+1])
+        plt.plot(date8061[i+1], ema[i+1], 'g*')
+    i += 1
 
 
 
