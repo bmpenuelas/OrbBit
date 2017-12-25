@@ -107,15 +107,17 @@ def candle_to_document(candle, timeframe):
         document for MongoDB.
     """
     new_row = {}
-    new_row['timeframe'] = timeframe
-    new_row['date8061']  = candle[0]
     new_row['open']      = candle[1]
     new_row['high']      = candle[2]
     new_row['low']       = candle[3]
     new_row['close']     = candle[4]
     new_row['volume']    = candle[5]
 
-    return {'ohlcv':new_row, '_id':(timeframe + '_' + str(candle[0]))}
+    return {'_id':(timeframe + '_' + str(candle[0])),
+            'timeframe':timeframe,
+            'date8061':candle[0],
+            'ohlcv':new_row,
+           }
 
 
 
@@ -388,21 +390,39 @@ def get_commands(command):
         Requested data.
     """
 
-    # Command <ohlc>
-    if command == 'ohlc':
-        symbol = request.args.get('symbol').replace('_', '/')
-        timeframe = request.json['timeframe']
-        from_millis = request.json['from']
-        to_millis = request.json['to']
 
-        # \todo
-        # busca en db
-        # retorna o error
+    # Command <ohlcv>
+    if command == 'ohlcv':
+        symbol      = request.json['symbol']
+        timeframe   = request.json['timeframe']
+        if 'from' in request.json:
+            from_millis = request.json['from']
+            from_millis -= (from_millis / timeframe_to_ms(timeframe)) 
+        if 'to' in request.json:
+            to_millis   = request.json['to']
+            to_millis   -= (to_millis / timeframe_to_ms(timeframe)) 
 
-        return jsonify({'fetching_symbols': fetching_symbols})
+        symbol_db = symbol.replace('/', '_')
+        collection = datamanager_db[symbol_db]
+
+        ohlcv_cursor = collection.find({"timeframe": timeframe})
+
+        print(ohlcv_cursor)
+
+        ohlcv = []
+        for doc in ohlcv_cursor:
+            print("XXXXX")
+            print(doc)
+            ohlcv.append(doc)
+
+            
+        if ohlcv == []:
+            return jsonify({'error': 'Data not available.'})
+        else:
+            return jsonify({'ohlcv':ohlcv})
 
     else:
-        return jsonify({'error': 'Data not available.'})
+        return jsonify({'error': 'Command not found.'})
 
 
 
