@@ -6,7 +6,7 @@ spyder
 
 #%% Start DataManager API
 import orbbit as orb
-orb.start_DataManager_API()
+orb.DM.start_API()
 
 #%% Import modules used by these snippets (before sending queries to the API)
 import requests 

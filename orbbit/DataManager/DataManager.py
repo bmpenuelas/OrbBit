@@ -180,7 +180,7 @@ class save_ohlcv(threading.Thread):
             fetch_from_API_success = 0
             while not(fetch_from_API_success):
                 try:
-                    print('Exchange query for ' + self.symbol +' '+ self.timeframe)
+                    # print('Exchange query for ' + self.symbol +' '+ self.timeframe)
                     ohlcv = exchange.fetch_ohlcv(self.symbol, self.timeframe, nxt_fetch)
                     fetch_from_API_success = 1
                 except:
@@ -190,12 +190,13 @@ class save_ohlcv(threading.Thread):
                 for candle in ohlcv:
                     new_document = candle_to_document(candle, self.timeframe)
 
-                    print("Fetched OHLCV " + self.symbol + new_document['_id'])
+                    # print("Fetched OHLCV " + self.symbol + new_document['_id'])
 
                     try:
                         collection.insert_one(new_document)
                     except pymongo.errors.DuplicateKeyError as e:
-                        print("Duplicate value, skipping.")
+                        # print("Duplicate value, skipping.")
+                        pass
                   
                     nxt_fetch += self.fetch_interval
                     time.sleep( self.fetch_interval / 1000 )
@@ -473,7 +474,7 @@ thread_DataManager_API = DataManager_API('thread_DataManager_API')
 
 
 
-def start_DataManager_API():
+def start_API():
     """ Start DataManager API Server
     Starts in a separate subprocess.
 

@@ -10,15 +10,48 @@ Attributes:
 
 """
 
-
+#%% Imports
 import orbbit as orb
+
+import numpy as np
+import matplotlib.pyplot as plt
 
 import requests
 
-#%% Start OrbBit
-orb.start_DataManager_API()
 
+
+def ExpMovingAverage(values, window):
+    """ Numpy implementation of EMA
+    """
+    weights = np.exp(np.linspace(-1., 0., window))
+    weights /= weights.sum()
+    a =  np.convolve(values, weights, mode='full')[:len(values)]
+    a[:window] = a[window]
+    return a
+
+
+#%% Start OrbBit
+orb.DM.start_API()
+
+#%% Start fetchers
 r = requests.get('http://127.0.0.1:5000/datamanager/fetch/start')
 print(r.json())
 
+#%% Get OHLCV
+jsonreq = {'symbol':'ETC/USD','timeframe':'5m'}
+r = requests.get('http://127.0.0.1:5000/datamanager/get/ohlcv',json=jsonreq)
+ohlcv = r.json()
+print(len(ohlcv))
+
 #%% 
+date8061 = [ row['date8061'] for row in ohlcv]
+close = [ row['ohlcv']['close'] for row in ohlcv]
+
+plt.plot(close)
+
+
+ema = ExpMovingAverage(close,12)
+plt.plot(ema)
+
+
+plt.show()
