@@ -124,8 +124,8 @@ def candle_to_document(candle, timeframe):
 #############################################################################
 
 def start_fetch():
-    """ Start the fetcher.
-
+    """ Start all the fetchers which are registered in the database.
+    
     Args:
 
     Returns:
@@ -135,7 +135,7 @@ def start_fetch():
     fetching_symbols = get_datamanager_info('fetching_symbols')
     for symbol in fetching_symbols:
         for timeframe in fetching_symbols[symbol]:
-            thread_save_ohlcv = save_ohlcv(symbol, timeframe, time.time()*1000)
+            thread_save_ohlcv = save_ohlcv(symbol, timeframe)
             thread_save_ohlcv.start()
 
     return jsonify({'fetching_symbols': get_datamanager_info('fetching_symbols')})
@@ -143,12 +143,20 @@ def start_fetch():
 
 
 class save_ohlcv(threading.Thread):
-    def __init__(self, symbol, timeframe, curr_time_8061):
+    """ Thread that fetches data for a given symbol/timeframe.
+
+    On start, it will try to fill missing data points.
+
+    Args:
+        symbol (str)
+        timeframe (str)
+    """
+    def __init__(self, symbol, timeframe):
         threading.Thread.__init__(self)
         self.symbol = symbol
         self.symbol_db = symbol.replace('/', '_')
         self.timeframe = timeframe
-        self.curr_time_8061 = curr_time_8061
+        self.curr_time_8061 = time.time() * 1000
 
         self.fetch_interval = int(timeframe_to_ms(self.timeframe)*0.9)
         self.retry_on_xchng_err_interval = 1
@@ -188,7 +196,7 @@ class save_ohlcv(threading.Thread):
 
 
 
-def fill_ohlcv(symbol, timeframe, from_millis):
+def fill_ohlcv(symbol, timeframe, from_millis=1485216000000):
     """ Attempt to fill gaps in the DataManager database by fetching many data at once.
         It is limited by how back in time the exchange API provides data.
 
@@ -214,18 +222,15 @@ def fill_ohlcv(symbol, timeframe, from_millis):
             ohlcv = exchange.fetch_ohlcv(symbol, timeframe, since=from_millis)
             fetch_from_API_success = 1
         except:
-            print('Exchange ERR. Could not load data to fill OHLCV')
+            print('Exchange ERR. Could not load data to fill OHLCV ' + symbol +' '+ timeframe)
             time.sleep(retry_on_xchng_err_interval)
 
-    for candle in ohlcv:
-        new_document = candle_to_document(candle, timeframe)
-        try:
-            collection.insert_one(new_document)
-            print('Filling ' + symbol + timeframe + str(new_document['ohlcv']['date8061']))
-            filled += 1
-        except pymongo.errors.DuplicateKeyError as e:
-            pass
-        
+    new_documents = [candle_to_document(candle, timeframe) for candle in ohlcv]
+    try:
+        insertion_result = collection.insert_many(new_documents)    
+        filled = len(insertion_result.inserted_ids)
+    except pymongo.errors.BulkWriteError as ex:
+        print('Nothing to fill ' + symbol +' '+ timeframe)
     # \todo chech for holes in data
     return filled
 
@@ -335,12 +340,12 @@ def fetch_commands(command):
             if timeframe not in fetching_symbols[symbol]:
                 fetching_symbols[symbol].append(timeframe)
                 datamanager_info.update_one({'fetching_symbols':{'$exists': True}}, {"$set": {'fetching_symbols':fetching_symbols, } }, upsert=True)
-                new_symbol_fetcher = save_ohlcv(symbol, timeframe, time.time()*1000)
+                new_symbol_fetcher = save_ohlcv(symbol, timeframe)
                 new_symbol_fetcher.start()
         else:
             fetching_symbols[symbol] = [timeframe]
             datamanager_info.update_one({'fetching_symbols':{'$exists': True}}, {"$set": {'fetching_symbols':fetching_symbols, } }, upsert=True)
-            new_symbol_fetcher = save_ohlcv(symbol, timeframe, time.time()*1000)
+            new_symbol_fetcher = save_ohlcv(symbol, timeframe)
             new_symbol_fetcher.start()
 
         return jsonify({'fetching_symbols': fetching_symbols})
@@ -358,10 +363,11 @@ def fetch_commands(command):
 @app.route('/datamanager/get', methods=['GET'])
 def get():
     """ Show DataManager block available data.
+
     Args:
 
     Returns:
-      
+      Available OHLCV symbols and timeframes.
     """
 
     # \todo List of available data, fetched and processed
@@ -374,7 +380,8 @@ def get():
 #----------------------------------------------------------------------------
 @app.route('/datamanager/get/<string:command>', methods=['GET'])
 def get_commands(command):
-    """ Serve the data collected by the DataManager block.
+    """ Serve data collected by the DataManager block.
+
     Args:
 
     Returns:
