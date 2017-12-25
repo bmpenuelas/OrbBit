@@ -47,6 +47,10 @@ def get_datamanager_info(info):
 
     Returns:
         Structure stored under 'info'. Can be any data structure.
+
+    Note:
+        To delete all database contents use the following command. Use with caution!
+        datamanager_db_connection.drop_database(datamanager_db_key['database'])
     """
 
     try:
@@ -155,6 +159,9 @@ class save_ohlcv(threading.Thread):
         collection = datamanager_db[self.symbol_db]
         nxt_fetch = self.curr_time_8061
 
+        filled = fill_ohlcv(self.symbol, self.timeframe, exchange.parse8601('2017-01-01 00:00:00'))
+        if filled: print('Filled ' + str(filled) + ' missing entries in ' + self.symbol +' '+ self.timeframe)
+
         while 1:
             fetch_from_API_success = 0
             while not(fetch_from_API_success):
@@ -167,7 +174,7 @@ class save_ohlcv(threading.Thread):
         
             if ohlcv:
                 for candle in ohlcv:
-                    new_document = candle_to_document(candle)
+                    new_document = candle_to_document(candle, self.timeframe)
 
                     print("Fetched OHLCV " + self.symbol + new_document['_id'])
 
