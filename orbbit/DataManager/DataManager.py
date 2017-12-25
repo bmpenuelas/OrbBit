@@ -54,10 +54,10 @@ def get_datamanager_info(info):
     """
 
     try:
-        return datamanager_info.find( {info:{'$exists': True}} )[0][info]
+        return datamanager_info.find( {info: {'$exists': True}} )[0][info]
     except IndexError:
-        datamanager_info.insert_one( {'fetching_symbols':{'BTC/USD':['1m', '3m', '5m',], 'ETH/USD':['1m', '3m', '5m',],} } )
-        return datamanager_info.find( {info:{'$exists': True}} )[0][info]
+        datamanager_info.insert_one( {'fetching_symbols': {'BTC/USD': ['1m', '3m', '5m',], 'ETH/USD': ['1m', '3m', '5m',],} } )
+        return datamanager_info.find( {info: {'$exists': True}} )[0][info]
 
 
 
@@ -79,6 +79,10 @@ fetching_symbols = get_datamanager_info('fetching_symbols')
 #----------------------------------------------------------------------------
 # Generic functions
 #----------------------------------------------------------------------------
+
+def current_millis():
+    return time.time() * 1000
+
 
 def timeframe_to_ms(timeframe):
     """ Convert from readable string to milliseconds.
@@ -113,10 +117,10 @@ def candle_to_document(candle, timeframe):
     new_row['close']     = candle[4]
     new_row['volume']    = candle[5]
 
-    return {'_id':(timeframe + '_' + str(candle[0])),
-            'timeframe':timeframe,
-            'date8061':candle[0],
-            'ohlcv':new_row,
+    return {'_id': (timeframe + '_' + str(candle[0])),
+            'timeframe': timeframe,
+            'date8061': candle[0],
+            'ohlcv': new_row,
            }
 
 
@@ -158,7 +162,7 @@ class save_ohlcv(threading.Thread):
         self.symbol = symbol
         self.symbol_db = symbol.replace('/', '_')
         self.timeframe = timeframe
-        self.curr_time_8061 = time.time() * 1000
+        self.curr_time_8061 = current_millis()
 
         self.fetch_interval = int(timeframe_to_ms(self.timeframe)*0.9)
         self.retry_on_xchng_err_interval = 1
@@ -341,12 +345,12 @@ def fetch_commands(command):
             print(fetching_symbols[symbol])
             if timeframe not in fetching_symbols[symbol]:
                 fetching_symbols[symbol].append(timeframe)
-                datamanager_info.update_one({'fetching_symbols':{'$exists': True}}, {"$set": {'fetching_symbols':fetching_symbols, } }, upsert=True)
+                datamanager_info.update_one({'fetching_symbols': {'$exists': True}}, {"$set": {'fetching_symbols': fetching_symbols, } }, upsert=True)
                 new_symbol_fetcher = save_ohlcv(symbol, timeframe)
                 new_symbol_fetcher.start()
         else:
             fetching_symbols[symbol] = [timeframe]
-            datamanager_info.update_one({'fetching_symbols':{'$exists': True}}, {"$set": {'fetching_symbols':fetching_symbols, } }, upsert=True)
+            datamanager_info.update_one({'fetching_symbols': {'$exists': True}}, {"$set": {'fetching_symbols': fetching_symbols, } }, upsert=True)
             new_symbol_fetcher = save_ohlcv(symbol, timeframe)
             new_symbol_fetcher.start()
 
@@ -393,33 +397,38 @@ def get_commands(command):
 
     # Command <ohlcv>
     if command == 'ohlcv':
+        projection = {'ohlcv': True, 'date8061': True, '_id': False}
+
         symbol      = request.json['symbol']
         timeframe   = request.json['timeframe']
+
         if 'from' in request.json:
             from_millis = request.json['from']
-            from_millis -= (from_millis / timeframe_to_ms(timeframe)) 
+            from_millis -= (from_millis / timeframe_to_ms(timeframe))
+        else:
+            from_millis = 0
+
         if 'to' in request.json:
             to_millis   = request.json['to']
             to_millis   -= (to_millis / timeframe_to_ms(timeframe)) 
+        else:
+            to_millis = current_millis() + 10e3
 
         symbol_db = symbol.replace('/', '_')
         collection = datamanager_db[symbol_db]
 
-        ohlcv_cursor = collection.find({"timeframe": timeframe})
+        query = {'ohlcv': {'$exists': True}, 'timeframe': timeframe, 'date8061': {'$gt': from_millis, '$lt': to_millis}}
 
-        print(ohlcv_cursor)
+        ohlcv_cursor = collection.find(query, projection)
 
         ohlcv = []
         for doc in ohlcv_cursor:
-            print("XXXXX")
-            print(doc)
             ohlcv.append(doc)
-
             
         if ohlcv == []:
             return jsonify({'error': 'Data not available.'})
         else:
-            return jsonify({'ohlcv':ohlcv})
+            return jsonify(ohlcv)
 
     else:
         return jsonify({'error': 'Command not found.'})
