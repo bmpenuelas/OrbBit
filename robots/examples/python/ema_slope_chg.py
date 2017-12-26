@@ -18,7 +18,154 @@ import matplotlib.pyplot as plt
 
 import requests
 
-# %% Generic definitions
+
+#%%##########################################################################
+#                   EMA SLOPE DETECTOR DEFINITIONS                          #
+#############################################################################
+class slope_detector():
+    """Instantiate a slope change detector with hystereis.
+
+    With a slope change it will execute a trade (sell if new slope is descending,
+    buy if new slope is ascending). 
+    Then it will set hysteresis bands for upper and lower bounds.
+    If the curr value surpasses the bands it will:
+      - Clear the bands if value went in the desired direction. A profit equal
+        to the band minus 2 txn fees is guaranteed.
+      - Make the inverse transaction. A loss equal to the band plus 2 txn fees 
+        will occur.
+
+    Args:
+
+    Attributes:
+        curr_slope (int): +1 ascending, -1 descending
+    """
+
+    valid_status = ('stop', 'wait_slope_chg', 'new_trade', 'wait_in_band',)
+    valid_direction = (+1, -1)
+    valid_event = ('enter', 'exit')
+    process_latency = 5
+    
+    def __init__(self, order_volume, history, continue_coef, reverse_coef):
+
+        self.history = history
+        self.prev_value = history[-2]
+        self.curr_value = history[-1]
+
+        # hysteresis
+        self.event_dir = 'enter'
+        self.event_dir = +1
+        self.continue_coef = continue_coef
+        self.continue_level = self.curr_value
+        self.reverse_coef = reverse_coef
+        self.reverse_level = self.curr_value
+
+
+        self.order_volume = order_volume
+        self.balance = 3 * order_volume
+
+
+        self.curr_status = 'stop'
+
+        self.first_slope_acquired = 0
+        self.prev_slope = +1
+        self.curr_slope = +1
+
+
+
+    def updt_status(self):
+        if self.curr_status == 'stop':
+
+            self.acq_first_slope()
+
+            if self.first_slope_acquired:
+                self.curr_status = 'wait_slope_chg'
+
+
+        elif self.curr_status == 'wait_slope_chg':
+            
+            self.updt_slope()
+            
+            if self.prev_slope != self.curr_slope:
+                self.event = 'enter'
+                self.event_dir = self.prev_slope
+                self.curr_status = 'new_trade'
+
+
+        elif self.curr_status == 'new_trade':
+
+            self.trade(self.event, self.event_dir)
+
+            self.continue_level = self.curr_value * (1 + self.event_dir * self.continue_coef)
+            self.reverse_level  = self.curr_value * (1 - self.event_dir * self.reverse_coef)
+
+            self.curr_status = 'wait_in_band'
+
+
+        elif self.curr_status == 'wait_in_band':
+            
+            self.updt_slope()
+
+            if  ((self.event_dir == +1) and self.curr_value > self.continue_level)  \
+             or ((self.event_dir == -1) and self.curr_value < self.continue_level):
+                self.event = 'exit'
+                self.event_dir = self.curr_slope
+                self.curr_status = 'new_trade'
+
+            elif ((self.event_dir == -1) and self.curr_value > self.reverse_level)  \
+             or  ((self.event_dir == +1) and self.curr_value < self.reverse_level):
+                self.curr_status = 'wait_slope_chg'
+
+            else:
+                raise ValueError
+ 
+        else:
+            raise NameError ('Invalid status.')
+
+
+
+    def tick(self, curr_value):
+        self.prev_value = self.curr_value
+        self.curr_value = curr_value
+
+        i = 0
+        while i < self.process_latency:
+            self.updt_status()
+            print(self.curr_status)
+            i += 1
+
+
+
+    def updt_slope(self):
+        self.prev_slope = self.curr_slope
+        self.curr_slope = +1 if self.curr_value > self.prev_value else -1
+        return 0
+        
+
+    def acq_first_slope(self):
+        pass
+        return 0
+
+
+    def trade(self, event, direction):
+        if (direction not in self.valid_direction) or (event not in self.valid_event):
+            raise ValueError
+
+        if ((event == 'enter') and (direction == +1)) \
+         or ((event == 'exit') and (direction == -1)):
+            self.trade('sell')
+        elif ((event == 'enter') and (direction == -1)) \
+         or ((event == 'exit') and (direction == +1)):
+            self.trade('buy')
+        else:
+            raise ValueError
+
+        return 0
+
+
+
+#%%##########################################################################
+#                         GENERIC DEFINITIONS                               #
+#############################################################################
 class DataCursor(object):
     text_template = 'x: %0.2f\ny: %0.2f'
     x, y = 0.0, 0.0
@@ -47,103 +194,6 @@ class DataCursor(object):
             event.canvas.draw()
 
 
-
-# %% EMA Slope Detector definitions
-class slope_detector():
-    """Instantiate a slope change detector with hystereis.
-
-    With a slope change it will execute a trade (sell if new slope is descending,
-    buy if new slope is ascending). 
-    Then it will set hysteresis bands for upper and lower bounds.
-    If the current value surpasses the bands it will:
-      - Clear the bands if value went in the desired direction. A profit equal
-        to the band minus 2 txn fees is guaranteed.
-      - Make the inverse transaction. A loss equal to the band plus 2 txn fees 
-        will occur.
-
-    Args:
-
-    Attributes:
-        curr_slope (int): +1 ascending, -1 descending
-    """
-
-    valid_status = ('stop', 'wait_slope_chg', 'new_trade', 'wait_in_band',)
-    
-    def __init__(self, order_volume, history, continue_level, reverse_level):
-
-        self.history = history
-
-        # hysteresis
-        self.dir_enter = +1
-        self.continue_level = continue_level
-        self.reverse_level = reverse_level
-
-
-        self.order_volume = order_volume
-        self.balance = 3 * order_volume
-
-
-        self.current_status = 'stop'
-
-        self.first_slope_acquired = 0
-        self.prev_slope = +1
-        self.curr_slope = +1
-
-
-
-    def updt_status():
-        if self.current_status == 'stop':
-
-            self.acq_first_slope()
-
-            if self.first_slope_acquired:
-                self.current_status = 'wait_slope_chg'
-
-
-        elif self.current_status == 'wait_slope_chg':
-            
-            self.updt_slope()
-            
-            if self.prev_slope != self.curr_slope:
-                self.dir_enter = self.prev_slope
-                self.current_status = 'new_trade'
-
-
-        elif self.current_status == 'new_trade':
-
-            trade(self.dir_enter)
-
-            self.current_status = 
-
-
-        elif self.current_status == 'wait_in_band':
-
-            self.current_status = 
-        else:
-            raise NameError ('Invalid status.')
-
-    def tick(current_value):
-      pass
-
-
-
-
-    def acq_first_slope():
-        pass
-
-
-    def trade(direction, ):
-        if direction = +1:
-            self.trade('sell')
-        elif direction = -1:
-            self.trade('buy')
-        else:
-            raise ValueError ('Direction can only be +1 or -1.')
-
-        return 0
-
-
-
 def ExpMovingAverage(values, window):
     """ Numpy implementation of EMA
     """
@@ -153,6 +203,12 @@ def ExpMovingAverage(values, window):
     a[:window] = a[window]
     return a
 
+
+
+
+#############################################################################
+#                                 SCRIPT                                    #
+#############################################################################
 
 #%% Start OrbBit
 orb.DM.start_API()
@@ -173,7 +229,6 @@ close = [ row['ohlcv']['close'] for row in ohlcv]
 
 fig = plt.figure()
 line, = plt.plot(date8061, close, 'b')
-
 fig.canvas.mpl_connect('pick_event', DataCursor(plt.gca()))
 line.set_picker(1) # Tolerance in points
 plt.show()
