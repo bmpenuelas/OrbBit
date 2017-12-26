@@ -56,7 +56,10 @@ def get_datamanager_info(info):
     try:
         return datamanager_info.find( {info: {'$exists': True}} )[0][info]
     except IndexError:
-        datamanager_info.insert_one( {'fetching_symbols': {'BTC/USD': ['1m', '3m', '5m',], 'ETH/USD': ['1m', '3m', '5m',],} } )
+        datamanager_info.insert_one( {'fetching_symbols': {'BTC/USD': ['1m', '3m', '5m',], 
+                                                           'ETH/USD': ['1m', '3m', '5m',],
+                                                           'ETC/USD': ['1m', '3m', '5m',],
+                                                          } } )
         return datamanager_info.find( {info: {'$exists': True}} )[0][info]
 
 
@@ -162,10 +165,13 @@ class save_ohlcv(threading.Thread):
         self.symbol = symbol
         self.symbol_db = symbol.replace('/', '_')
         self.timeframe = timeframe
+
         self.curr_time_8061 = current_millis()
 
         self.fetch_interval = int(timeframe_to_ms(self.timeframe)*0.9)
         self.retry_on_xchng_err_interval = 1
+
+        self.last_fetch = 0
 
     def run(self):
         print('Started fetcher for ' + self.symbol +' '+ self.timeframe)
@@ -184,6 +190,7 @@ class save_ohlcv(threading.Thread):
                     ohlcv = exchange.fetch_ohlcv(self.symbol, self.timeframe, nxt_fetch)
                     fetch_from_API_success = 1
                 except:
+                    print('Exchange query ERR for ' + self.symbol +' '+ self.timeframe)
                     time.sleep(self.retry_on_xchng_err_interval)
         
             if ohlcv:
@@ -198,8 +205,11 @@ class save_ohlcv(threading.Thread):
                         # print("Duplicate value, skipping.")
                         pass
                   
-                    nxt_fetch += self.fetch_interval
-                    time.sleep( self.fetch_interval / 1000 )
+                    if new_document['date8061'] > self.last_fetch:
+                        self.last_fetch = new_document['date8061']
+
+                nxt_fetch = self.last_fetch + self.fetch_interval
+                time.sleep( self.fetch_interval / 1000 )
 
 
 
@@ -346,12 +356,18 @@ def fetch_commands(command):
             print(fetching_symbols[symbol])
             if timeframe not in fetching_symbols[symbol]:
                 fetching_symbols[symbol].append(timeframe)
-                datamanager_info.update_one({'fetching_symbols': {'$exists': True}}, {"$set": {'fetching_symbols': fetching_symbols, } }, upsert=True)
+                datamanager_info.update_one({'fetching_symbols': {'$exists': True}},
+                                            {"$set": {'fetching_symbols': fetching_symbols, }},
+                                            upsert=True
+                                           )
                 new_symbol_fetcher = save_ohlcv(symbol, timeframe)
                 new_symbol_fetcher.start()
         else:
             fetching_symbols[symbol] = [timeframe]
-            datamanager_info.update_one({'fetching_symbols': {'$exists': True}}, {"$set": {'fetching_symbols': fetching_symbols, } }, upsert=True)
+            datamanager_info.update_one({'fetching_symbols': {'$exists': True}}, 
+                                        {"$set": {'fetching_symbols': fetching_symbols, } }, 
+                                        upsert=True
+                                       )
             new_symbol_fetcher = save_ohlcv(symbol, timeframe)
             new_symbol_fetcher.start()
 
@@ -418,7 +434,10 @@ def get_commands(command):
         symbol_db = symbol.replace('/', '_')
         collection = datamanager_db[symbol_db]
 
-        query = {'ohlcv': {'$exists': True}, 'timeframe': timeframe, 'date8061': {'$gt': from_millis, '$lt': to_millis}}
+        query = {'ohlcv': {'$exists': True}, 
+                 'timeframe': timeframe, 
+                 'date8061': {'$gt': from_millis, '$lt': to_millis}
+                }
 
         ohlcv_cursor = collection.find(query, projection)
 
@@ -493,4 +512,4 @@ def start_API():
 # Script-run mode
 #----------------------------------------------------------------------------
 if __name__ == '__main__':
-    print("DataManager Started.")
+    print("DataManager in script mode.")
