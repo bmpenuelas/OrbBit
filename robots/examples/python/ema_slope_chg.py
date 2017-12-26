@@ -43,13 +43,13 @@ r = requests.get('http://127.0.0.1:5000/datamanager/get/ohlcv',json=jsonreq)
 ohlcv = r.json()
 print(len(ohlcv))
 
-#%% 
+#%% calculate EMA and find slope changes
 date8061 = [ row['date8061'] for row in ohlcv]
 close = [ row['ohlcv']['close'] for row in ohlcv]
 plt.plot(date8061, close)
 
 
-ema = ExpMovingAverage(close,5)
+ema = ExpMovingAverage(close,12)
 plt.plot(date8061, ema)
 
 ema_slope_chgs = []
@@ -61,9 +61,9 @@ while i < len(ema)-1:
     if (up and (ema[i] < ema[i-1])) or (not up and (ema[i] > ema[i-1])):
         up = not up
         
-        ema_slope_chgs.append(date8061[i+1])
-        plt.plot(date8061[i+1], ema[i+1], 'g*')
-        plt.plot(date8061[i+1], close[date8061.index(date8061[i+1])], 'ro')
+        ema_slope_chgs.append(date8061[i])
+        plt.plot(date8061[i], ema[i], 'g*')
+        plt.plot(date8061[i], close[date8061.index(date8061[i])], 'ro')
         
     i += 1
 
