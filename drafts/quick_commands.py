@@ -19,7 +19,7 @@ ohlcv = r.json()
 print(len(ohlcv))
 
 #%% Add pair
-jsonreq = {'symbol':'ETC/USD','timeframe':'5m'}
+jsonreq = {'symbol':'ETC/USD','timeframe':'1m'}
 r = requests.get('http://127.0.0.1:5000/datamanager/fetch/add',json=jsonreq)
 print(r.json())
 
