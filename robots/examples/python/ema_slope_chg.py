@@ -17,6 +17,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import requests
+import json
 
 
 #%%##########################################################################
@@ -40,12 +41,13 @@ class slope_detector():
         curr_slope (int): +1 ascending, -1 descending
     """
 
+    fee_pcnt = 0.1
     valid_status = ('stop', 'wait_slope_chg', 'new_trade', 'wait_in_band',)
     valid_direction = (+1, -1)
     valid_event = ('enter', 'exit')
     process_latency = 5
     
-    def __init__(self, order_volume, history, continue_coef, reverse_coef):
+    def __init__(self, order_volume, history):
 
         self.history = history
         self.prev_value = history[-2]
@@ -54,14 +56,16 @@ class slope_detector():
         # hysteresis
         self.event_dir = 'enter'
         self.event_dir = +1
-        self.continue_coef = continue_coef
+        self.continue_coef = self.fee_pcnt
         self.continue_level = self.curr_value
-        self.reverse_coef = reverse_coef
+        self.reverse_coef = 2 * self.fee_pcnt
         self.reverse_level = self.curr_value
 
 
-        self.order_volume = order_volume
-        self.balance = 3 * order_volume
+        self.order_volume = order_volume # in quote currency
+        self.quote_balance = 3 * order_volume
+        # start with same balance on base / quote
+        self.base_balance = self.quote_balance / self.curr_value
 
 
         self.curr_status = 'stop'
@@ -152,14 +156,25 @@ class slope_detector():
 
         if ((event == 'enter') and (direction == +1)) \
          or ((event == 'exit') and (direction == -1)):
-            self.trade('sell')
+            self.new_order('buy')
         elif ((event == 'enter') and (direction == -1)) \
          or ((event == 'exit') and (direction == +1)):
-            self.trade('buy')
+            self.new_order('sell')
         else:
             raise ValueError
-
         return 0
+
+    def new_order(self, order_type):
+        if order_type == 'buy':
+            self.quote_balance -= self.order_volume * (1 + self.fee_pcnt)
+            self.order_volume += self.order_volume / self.curr_value
+
+        elif order_type == 'buy':
+            self.quote_balance += self.order_volume * (1 - self.fee_pcnt)
+            self.order_volume -= self.order_volume / self.curr_value
+
+        else:
+            raise ValueError
 
 
 
@@ -232,3 +247,8 @@ line, = plt.plot(date8061, close, 'b')
 fig.canvas.mpl_connect('pick_event', DataCursor(plt.gca()))
 line.set_picker(1) # Tolerance in points
 plt.show()
+
+
+#%%
+with open('./save.json', 'w') as f:
+    json.dump(ohlcv, f)
