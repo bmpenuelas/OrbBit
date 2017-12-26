@@ -46,7 +46,6 @@ print(len(ohlcv))
 #%% 
 date8061 = [ row['date8061'] for row in ohlcv]
 close = [ row['ohlcv']['close'] for row in ohlcv]
-
 plt.plot(date8061, close)
 
 
@@ -64,6 +63,8 @@ while i < len(ema)-1:
         
         ema_slope_chgs.append(date8061[i+1])
         plt.plot(date8061[i+1], ema[i+1], 'g*')
+        plt.plot(date8061[i+1], close[date8061.index(date8061[i+1])], 'ro')
+        
     i += 1
 
 
