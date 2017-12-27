@@ -23,7 +23,7 @@ with open('./save.json', 'w') as f:
     json.dump(ohlcv, f)
     
 #%% Add pair
-jsonreq = {'symbol':'LTC/USD','timeframe':'1m'}
+jsonreq = {'symbol':'BTC/USD','timeframe':'15m'}
 r = requests.get('http://127.0.0.1:5000/datamanager/fetch/add',json=jsonreq)
 print(r.json())
 

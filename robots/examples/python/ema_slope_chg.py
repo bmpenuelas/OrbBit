@@ -18,6 +18,7 @@ except NameError:
 
     import numpy as np
     import matplotlib.pyplot as plt
+    from   mpl_toolkits.mplot3d.axes3d import Axes3D
 
     import requests
     import time
@@ -289,6 +290,31 @@ def range_step(start, stop, step):
         i += step
 
 
+#%%##########################################################################
+#                           TEST DEFINITIONS                                #
+#############################################################################
+
+profit = [[0 for i in range( len(sim_hyst_coef) )] for j in range( len(sim_ema_samples) )]
+
+
+def test_bot(ema_samples, hyst_coef):
+    bot = ema_slope_chg_bot(ema_samples = ema_samples, 
+                            hyst_continue_coef = hyst_coef,
+                            hyst_reverse_coef = hyst_coef,
+                            time_stamp = date8061[0], 
+                            curr_value = close[0],
+                           )
+
+    i = 1
+    samples = len(close)
+    while i < samples:
+        bot.tick(date8061[i], close[i])
+        i += 1
+
+    return (bot.quote_balance + bot.base_balance * bot.curr_value) / (2 * bot.initial_balance) - 1
+
+
+
 
 #%%##########################################################################
 #                                 SCRIPT                                    #
@@ -297,8 +323,7 @@ plt.close("all")
 
 # %% Run parameters
 SYMBOL = 'ETC/USD'
-EMA_SAMPLES = 12
-TIMEFRAME = '1m'
+TIMEFRAME = '15m'
 
 #%% Start OrbBit
 try:
@@ -322,44 +347,24 @@ print(len(ohlcv))
 #%% Plot history
 date8061 = [ row['date8061'] for row in ohlcv]
 close = [ row['ohlcv']['close'] for row in ohlcv]
-ema = ExpMovingAverage(close, EMA_SAMPLES)
 
 #%% Run detector
-sim_ema_samples = list(range(1,20))
-sim_hyst_coef = list( range_step(0, 5 * ema_slope_chg_bot.fee_pcnt, ema_slope_chg_bot.fee_pcnt / 2) )
+sim_ema_samples = list(range(1,50))
+sim_hyst_coef = list( range_step(0, 20 * ema_slope_chg_bot.fee_pcnt, ema_slope_chg_bot.fee_pcnt) )
 
-profit = [[0 for i in range( len(sim_hyst_coef) )] for j in range( len(sim_ema_samples) )]
+
+
+
 for sim_ema in range( len(sim_ema_samples) ):
     for sim_hyst in range( len(sim_hyst_coef) ):
-            bot = ema_slope_chg_bot(ema_samples = sim_ema_samples[sim_ema], 
-                                    hyst_continue_coef = sim_hyst_coef[sim_hyst],
-                                    hyst_reverse_coef = sim_hyst_coef[sim_hyst],
-                                    time_stamp = date8061[0], 
-                                    curr_value = close[0],
-                                   )
-
-            i = 1
-            samples = len(close)
-            while i < samples:
-                bot.tick(date8061[i], close[i])
-                i += 1
-
-            profit[sim_ema][sim_hyst] = (bot.quote_balance + bot.base_balance * bot.curr_value)  \
-                                                 / (2 * bot.initial_balance) - 1
+        profit[sim_ema][sim_hyst] = test_bot(sim_ema_samples[sim_ema], sim_hyst_coef[sim_hyst])
 
 
 profit_arr = np.asarray(profit)
 profit_best = max(profit_arr.flatten())
 
 print('MAX profit ' + str(profit_best))
-
-from mpl_toolkits.mplot3d.axes3d import Axes3D
-
-x = sim_ema_samples
-y = sim_hyst_coef
-
-from mpl_toolkits.mplot3d.axes3d import Axes3D
-
+   
 x = np.arange(0, len(sim_ema_samples), 1)
 y = np.arange(0, len(sim_hyst_coef), 1)
 
@@ -371,3 +376,11 @@ fig = plt.figure()
 ax = Axes3D(fig)
 ax.plot_surface(xs, ys, zs, rstride=1, cstride=1, cmap='hot')
 plt.show()
+
+
+best_bot = test_bot(sim_ema_samples[45], sim_hyst_coef[5])
+
+hold_profit = (close[-1] - close[0]) / close[0]
+
+print('Bot has profit ' + str(best_bot))
+print('Hold profit ' + str(hold_profit))
