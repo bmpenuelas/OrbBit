@@ -353,17 +353,21 @@ profit_best = max(profit_arr.flatten())
 
 print('MAX profit ' + str(profit_best))
 
-from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d.axes3d import Axes3D
 
-fig_3d_cloud_profit = plt.figure()
-ax = Axes3D(fig_3d_cloud_profit)
+x = sim_ema_samples
+y = sim_hyst_coef
 
-ax.scatter(profit_arr[0], profit_arr[1], profit_arr[2])
+from mpl_toolkits.mplot3d.axes3d import Axes3D
+
+x = np.arange(0, len(sim_ema_samples), 1)
+y = np.arange(0, len(sim_hyst_coef), 1)
+
+xs, ys = np.meshgrid(x, y)
+# z = calculate_R(xs, ys)
+zs = profit_arr[xs, ys]
+
+fig = plt.figure()
+ax = Axes3D(fig)
+ax.plot_surface(xs, ys, zs, rstride=1, cstride=1, cmap='hot')
 plt.show()
-
-
-# %% Results
-# bot.plot_status()
-
-
-
