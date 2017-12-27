@@ -17,7 +17,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import requests
-import json
+import time
 
 
 #%%##########################################################################
@@ -41,17 +41,25 @@ class slope_detector():
         curr_slope (int): +1 ascending, -1 descending
     """
 
-    fee_pcnt = 0.1
+    fee_pcnt = 0.001
     valid_status = ('stop', 'wait_slope_chg', 'new_trade', 'wait_in_band',)
     valid_direction = (+1, -1)
     valid_event = ('enter', 'exit')
     process_latency = 5
     
-    def __init__(self, order_volume, history):
+    def __init__(self, order_volume, ema_samples, time_stamp, curr_value):
 
-        self.history = history
-        self.prev_value = history[-2]
-        self.curr_value = history[-1]
+        self.time_stamps = [time_stamp]
+        self.curr_time_stamp = time_stamp
+
+        self.history = [curr_value]
+        self.prev_value = curr_value
+        self.curr_value = curr_value
+
+        self.ema_samples = ema_samples
+        self.ema = curr_value
+        self.prev_ema_value = curr_value
+        self.curr_ema_value = curr_value
 
         # hysteresis
         self.event_dir = 'enter'
@@ -62,15 +70,18 @@ class slope_detector():
         self.reverse_level = self.curr_value
 
 
+        self.buy_history = []
+        self.sell_history = []
+
         self.order_volume = order_volume # in quote currency
-        self.quote_balance = 3 * order_volume
-        # start with same balance on base / quote
-        self.base_balance = self.quote_balance / self.curr_value
+        self.initial_balance = 3 * order_volume
+        self.quote_balance = self.initial_balance
+        self.base_balance = self.initial_balance / self.curr_value # same base/quote bal
 
 
         self.curr_status = 'stop'
 
-        self.first_slope_acquired = 0
+        self.first_slope_acquired = 1
         self.prev_slope = +1
         self.curr_slope = +1
 
@@ -87,7 +98,7 @@ class slope_detector():
 
         elif self.curr_status == 'wait_slope_chg':
             
-            self.updt_slope()
+            self.updt_ema_slope()
             
             if self.prev_slope != self.curr_slope:
                 self.event = 'enter'
@@ -107,29 +118,25 @@ class slope_detector():
 
         elif self.curr_status == 'wait_in_band':
             
-            self.updt_slope()
+            self.updt_ema_slope()
 
-            if  ((self.event_dir == +1) and self.curr_value > self.continue_level)  \
-             or ((self.event_dir == -1) and self.curr_value < self.continue_level):
+            if  ((self.event_dir == +1) and (self.curr_value > self.continue_level))  \
+             or ((self.event_dir == -1) and (self.curr_value < self.continue_level)):
                 self.event = 'exit'
                 self.event_dir = self.curr_slope
                 self.curr_status = 'new_trade'
 
-            elif ((self.event_dir == -1) and self.curr_value > self.reverse_level)  \
-             or  ((self.event_dir == +1) and self.curr_value < self.reverse_level):
+            elif ((self.event_dir == -1) and (self.curr_value > self.reverse_level))  \
+             or  ((self.event_dir == +1) and (self.curr_value < self.reverse_level)):
                 self.curr_status = 'wait_slope_chg'
-
-            else:
-                raise ValueError
  
         else:
             raise NameError ('Invalid status.')
 
 
 
-    def tick(self, curr_value):
-        self.prev_value = self.curr_value
-        self.curr_value = curr_value
+    def tick(self, curr_time_stamp, curr_value):
+        self.updt_values(curr_time_stamp, curr_value)
 
         i = 0
         while i < self.process_latency:
@@ -139,9 +146,29 @@ class slope_detector():
 
 
 
-    def updt_slope(self):
+    def updt_values(self, curr_time_stamp, curr_value):
+        self.prev_value = self.curr_value
+        self.prev_ema_value = self.curr_ema_value
+
+        self.history.append(curr_value)
+        self.time_stamps.append(curr_time_stamp)
+
+        history_len = len(self.history)-1
+        curr_ema_samples = min(history_len, self.ema_samples)
+        self.ema = ExpMovingAverage(self.history, curr_ema_samples)
+
+        self.curr_time_stamp = self.time_stamps[-1]
+        self.curr_value = self.history[-1]
+        self.curr_ema_value = self.ema[-1]
+
+
+    def updt_ema_slope(self):
         self.prev_slope = self.curr_slope
-        self.curr_slope = +1 if self.curr_value > self.prev_value else -1
+        if self.curr_ema_value > self.prev_ema_value:
+            self.curr_slope = +1
+        elif self.curr_ema_value < self.prev_ema_value:
+            self.curr_slope = -1
+
         return 0
         
 
@@ -167,11 +194,15 @@ class slope_detector():
     def new_order(self, order_type):
         if order_type == 'buy':
             self.quote_balance -= self.order_volume * (1 + self.fee_pcnt)
-            self.order_volume += self.order_volume / self.curr_value
+            self.base_balance += self.order_volume / self.curr_value
 
-        elif order_type == 'buy':
+            self.buy_history.append([self.curr_time_stamp, self.curr_value])
+
+        elif order_type == 'sell':
             self.quote_balance += self.order_volume * (1 - self.fee_pcnt)
-            self.order_volume -= self.order_volume / self.curr_value
+            self.base_balance -= self.order_volume / self.curr_value
+
+            self.sell_history.append([self.curr_time_stamp, self.curr_value])
 
         else:
             raise ValueError
@@ -209,6 +240,17 @@ class DataCursor(object):
             event.canvas.draw()
 
 
+
+def plot_w_cursor(list_x_y):
+    fig = plt.figure()
+    for x_y in list_x_y:
+        line, = plt.plot(*x_y)
+        fig.canvas.mpl_connect('pick_event', DataCursor(plt.gca()))
+        line.set_picker(1) # Tolerance in points
+        plt.show()
+
+
+
 def ExpMovingAverage(values, window):
     """ Numpy implementation of EMA
     """
@@ -221,9 +263,15 @@ def ExpMovingAverage(values, window):
 
 
 
-#############################################################################
+#%%##########################################################################
 #                                 SCRIPT                                    #
 #############################################################################
+plt.close("all")
+
+# %% Run parameters
+SYMBOL = 'ETC/USD'
+EMA_SAMPLES = 12
+TIMEFRAME = '1m'
 
 #%% Start OrbBit
 orb.DM.start_API()
@@ -232,23 +280,51 @@ orb.DM.start_API()
 r = requests.get('http://127.0.0.1:5000/datamanager/fetch/start')
 print(r.json())
 
+time.sleep(5)
+
 #%% Get OHLCV
-jsonreq = {'symbol':'ETC/USD','timeframe':'1m'}
+jsonreq = {'symbol': SYMBOL,'timeframe': TIMEFRAME}
 r = requests.get('http://127.0.0.1:5000/datamanager/get/ohlcv',json=jsonreq)
 ohlcv = r.json()
 print(len(ohlcv))
 
-#%% calculate EMA and find slope changes
+#%% Plot history
 date8061 = [ row['date8061'] for row in ohlcv]
 close = [ row['ohlcv']['close'] for row in ohlcv]
+ema = ExpMovingAverage(close, EMA_SAMPLES)
 
-fig = plt.figure()
-line, = plt.plot(date8061, close, 'b')
-fig.canvas.mpl_connect('pick_event', DataCursor(plt.gca()))
-line.set_picker(1) # Tolerance in points
-plt.show()
+#%% Run detector
+bot = slope_detector(order_volume = 1, ema_samples = 5, time_stamp = date8061[0], curr_value = close[0])
+
+i = 1
+samples = len(close)
+while i < samples:
+    bot.tick(date8061[i], close[i])
+    i += 1
+    print ('Sample ' + str(i))
 
 
-#%%
-with open('./save.json', 'w') as f:
-    json.dump(ohlcv, f)
+# %% Results
+
+sale_x = [sale[0] for sale in bot.sell_history]
+sale_y = [sale[1] for sale in bot.sell_history]
+sale_style = 'rx'
+
+purchase_x = [purchase[0] for purchase in bot.buy_history]
+purchase_y = [purchase[1] for purchase in bot.buy_history]
+purchase_style = 'go'
+
+plot_w_cursor([[bot.time_stamps, bot.ema, 'b'], 
+               [bot.time_stamps, bot.history, 'r'], 
+               [sale_x, sale_y, sale_style],
+               [purchase_x, purchase_y, purchase_style],
+              ]
+             )
+
+
+
+profit = (bot.quote_balance + bot.base_balance * bot.curr_value)  \
+         / (2 * bot.initial_balance) - 1
+
+print('RESULT profit ' + str(profit))
+
