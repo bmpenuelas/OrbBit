@@ -351,11 +351,18 @@ for sim_ema in range( len(sim_ema_samples) ):
 
 
 profit_arr = np.asarray(profit)
-profit_max = max(profit_arr.flatten())
+profit_best = max(profit_arr.flatten())
 
+print('MAX profit ' + str(profit_best))
 
+from mpl_toolkits.mplot3d import Axes3D
 
-print('RESULT profit ' + str(profit))
+fig_3d_cloud_profit = plt.figure()
+ax = Axes3D(fig)
+
+ax.scatter(profit_arr[0], profit_arr[1], profit_arr[2])
+plt.show()
+
 
 # %% Results
 # bot.plot_status()
