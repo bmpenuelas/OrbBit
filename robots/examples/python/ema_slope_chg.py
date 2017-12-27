@@ -11,20 +11,23 @@ Attributes:
 """
 
 #%% Imports
-import orbbit as orb
+try:
+    orbbit_started
+except NameError:
+    import orbbit as orb
 
-import numpy as np
-import matplotlib.pyplot as plt
+    import numpy as np
+    import matplotlib.pyplot as plt
 
-import requests
-import time
+    import requests
+    import time
 
 
 #%%##########################################################################
 #                   EMA SLOPE DETECTOR DEFINITIONS                          #
 #############################################################################
-class slope_detector():
-    """Instantiate a slope change detector with hystereis.
+class ema_slope_chg_bot():
+    """Instantiate a slope change detector with hysteresis.
 
     With a slope change it will execute a trade (sell if new slope is descending,
     buy if new slope is ascending). 
@@ -39,14 +42,20 @@ class slope_detector():
 
     Attributes:
         curr_slope (int): +1 ascending, -1 descending
+        ema_noise (doouble): allowed variation in EMA which is not considered 
+            as a slope change.
     """
 
     fee_pcnt = 0.001
+    ema_noise = 0.0001
+    order_volume = 1 # in quote currency
+    initial_balance = 3 * order_volume
+
     valid_status = ('stop', 'wait_slope_chg', 'wait_in_band',)
     valid_direction = (+1, -1)
     valid_event = ('enter', 'exit')
     
-    def __init__(self, order_volume, ema_samples, time_stamp, curr_value):
+    def __init__(self, hyst_continue_coef, hyst_reverse_coef, ema_samples, time_stamp, curr_value):
 
         self.time_stamps = [time_stamp]
         self.curr_time_stamp = time_stamp
@@ -63,24 +72,21 @@ class slope_detector():
         # hysteresis
         self.event_dir = 'enter'
         self.event_dir = +1
-        self.continue_coef = self.fee_pcnt
+        self.continue_coef = hyst_continue_coef
         self.continue_level = self.curr_value
-        self.reverse_coef = 2 * self.fee_pcnt
+        self.reverse_coef = hyst_reverse_coef
         self.reverse_level = self.curr_value
 
 
         self.buy_history = []
         self.sell_history = []
 
-        self.order_volume = order_volume # in quote currency
-        self.initial_balance = 3 * order_volume
         self.quote_balance = self.initial_balance
         self.base_balance = self.initial_balance / self.curr_value # same base/quote bal
 
 
         self.curr_status = 'stop'
 
-        self.first_slope_acquired = 1
         self.prev_slope = +1
         self.curr_slope = +1
 
@@ -89,15 +95,11 @@ class slope_detector():
     def updt_status(self):
         if self.curr_status == 'stop':
 
-            self.acq_first_slope()
-
-            if self.first_slope_acquired:
+            if self.transitory_passed():
                 self.curr_status = 'wait_slope_chg'
 
 
         elif self.curr_status == 'wait_slope_chg':
-            
-            self.updt_ema_slope()
             
             if self.prev_slope != self.curr_slope:
                 self.event = 'enter'
@@ -110,8 +112,6 @@ class slope_detector():
 
         elif self.curr_status == 'wait_in_band':
             
-            self.updt_ema_slope()
-
             if  ((self.event_dir == +1) and (self.curr_value > self.continue_level))  \
              or ((self.event_dir == -1) and (self.curr_value < self.continue_level)):
                 self.event = 'exit'
@@ -131,8 +131,15 @@ class slope_detector():
 
     def tick(self, curr_time_stamp, curr_value):
         self.updt_values(curr_time_stamp, curr_value)
+        self.updt_ema_slope()
         self.updt_status()
+
+        # debug
+        # self.plot_status()
+        print('Sample ' + str(len(self.history)))
         print(self.curr_status)
+        print(self.curr_ema_value)
+        print(self.curr_slope)
 
 
 
@@ -154,9 +161,9 @@ class slope_detector():
 
     def updt_ema_slope(self):
         self.prev_slope = self.curr_slope
-        if self.curr_ema_value > self.prev_ema_value:
+        if self.curr_ema_value > self.prev_ema_value * (1 + self.ema_noise):
             self.curr_slope = +1
-        elif self.curr_ema_value < self.prev_ema_value:
+        elif self.curr_ema_value < self.prev_ema_value * (1 - self.ema_noise):
             self.curr_slope = -1
 
         return 0
@@ -169,10 +176,11 @@ class slope_detector():
         self.reverse_level  = self.curr_value * (1 - self.event_dir * self.reverse_coef)
 
 
-    def acq_first_slope(self):
-        pass
-        return 0
-
+    def transitory_passed(self):
+        if len(self.history) > (self.ema_samples + 1):
+            return 1
+        else:
+            return 0
 
     def trade(self, event, direction):
         if (direction not in self.valid_direction) or (event not in self.valid_event):
@@ -180,13 +188,14 @@ class slope_detector():
 
         if ((event == 'enter') and (direction == +1)) \
          or ((event == 'exit') and (direction == -1)):
-            self.new_order('buy')
+            self.new_order('sell')
         elif ((event == 'enter') and (direction == -1)) \
          or ((event == 'exit') and (direction == +1)):
-            self.new_order('sell')
+            self.new_order('buy')
         else:
             raise ValueError
         return 0
+
 
     def new_order(self, order_type):
         if order_type == 'buy':
@@ -203,6 +212,23 @@ class slope_detector():
 
         else:
             raise ValueError
+
+
+    def plot_status(self):
+        sale_x = [sale[0] for sale in self.sell_history]
+        sale_y = [sale[1] for sale in self.sell_history]
+        sale_style = 'rx'
+
+        purchase_x = [purchase[0] for purchase in self.buy_history]
+        purchase_y = [purchase[1] for purchase in self.buy_history]
+        purchase_style = 'go'
+
+        plot_w_cursor([[self.time_stamps, self.history, 'b'], 
+                       [self.time_stamps, self.ema, 'r'], 
+                       [sale_x, sale_y, sale_style],
+                       [purchase_x, purchase_y, purchase_style],
+                      ]
+                     )
 
 
 
@@ -227,8 +253,6 @@ class DataCursor(object):
 
     def __call__(self, event):
         self.event = event
-        # xdata, ydata = event.artist.get_data()
-        # self.x, self.y = xdata[event.ind], ydata[event.ind]
         self.x, self.y = event.mouseevent.xdata, event.mouseevent.ydata
         if self.x is not None:
             self.annotation.xy = self.x, self.y
@@ -258,12 +282,18 @@ def ExpMovingAverage(values, window):
     return a
 
 
+def range_step(start, stop, step):
+    i = start
+    while i < stop:
+        yield i
+        i += step
+
 
 
 #%%##########################################################################
 #                                 SCRIPT                                    #
 #############################################################################
-#plt.close("all")
+plt.close("all")
 
 # %% Run parameters
 SYMBOL = 'ETC/USD'
@@ -280,7 +310,7 @@ except NameError:
     print(r.json())
 
     orbbit_started = 1
-    
+
 time.sleep(5)
 
 #%% Get OHLCV
@@ -295,34 +325,23 @@ close = [ row['ohlcv']['close'] for row in ohlcv]
 ema = ExpMovingAverage(close, EMA_SAMPLES)
 
 #%% Run detector
-bot = slope_detector(order_volume = 1, ema_samples = 5, time_stamp = date8061[0], curr_value = close[0])
+
+bot = ema_slope_chg_bot(ema_samples = 5, 
+                        hyst_continue_coef = ema_slope_chg_bot.fee_pcnt,
+                        hyst_reverse_coef = ema_slope_chg_bot.fee_pcnt,
+                        time_stamp = date8061[0], 
+                        curr_value = close[0],
+                       )
 
 i = 1
 samples = len(close)
 while i < samples:
     bot.tick(date8061[i], close[i])
-    print ('Sample ' + str(i) + ' time_stamp ' + str(date8061[i]))
     i += 1
 
 
 # %% Results
-
-sale_x = [sale[0] for sale in bot.sell_history]
-sale_y = [sale[1] for sale in bot.sell_history]
-sale_style = 'rx'
-
-purchase_x = [purchase[0] for purchase in bot.buy_history]
-purchase_y = [purchase[1] for purchase in bot.buy_history]
-purchase_style = 'go'
-
-plot_w_cursor([[bot.time_stamps, bot.history, 'b'], 
-               [bot.time_stamps, bot.ema, 'r'], 
-               [sale_x, sale_y, sale_style],
-               [purchase_x, purchase_y, purchase_style],
-              ]
-             )
-
-
+bot.plot_status()
 
 profit = (bot.quote_balance + bot.base_balance * bot.curr_value)  \
          / (2 * bot.initial_balance) - 1
