@@ -42,10 +42,9 @@ class slope_detector():
     """
 
     fee_pcnt = 0.001
-    valid_status = ('stop', 'wait_slope_chg', 'new_trade', 'wait_in_band',)
+    valid_status = ('stop', 'wait_slope_chg', 'wait_in_band',)
     valid_direction = (+1, -1)
     valid_event = ('enter', 'exit')
-    process_latency = 5
     
     def __init__(self, order_volume, ema_samples, time_stamp, curr_value):
 
@@ -103,17 +102,10 @@ class slope_detector():
             if self.prev_slope != self.curr_slope:
                 self.event = 'enter'
                 self.event_dir = self.prev_slope
-                self.curr_status = 'new_trade'
 
+                self.new_trade()
 
-        elif self.curr_status == 'new_trade':
-
-            self.trade(self.event, self.event_dir)
-
-            self.continue_level = self.curr_value * (1 + self.event_dir * self.continue_coef)
-            self.reverse_level  = self.curr_value * (1 - self.event_dir * self.reverse_coef)
-
-            self.curr_status = 'wait_in_band'
+                self.curr_status = 'wait_in_band'
 
 
         elif self.curr_status == 'wait_in_band':
@@ -124,7 +116,9 @@ class slope_detector():
              or ((self.event_dir == -1) and (self.curr_value < self.continue_level)):
                 self.event = 'exit'
                 self.event_dir = self.curr_slope
-                self.curr_status = 'new_trade'
+
+                self.new_trade()
+                self.curr_status = 'wait_in_band'
 
             elif ((self.event_dir == -1) and (self.curr_value > self.reverse_level))  \
              or  ((self.event_dir == +1) and (self.curr_value < self.reverse_level)):
@@ -137,12 +131,8 @@ class slope_detector():
 
     def tick(self, curr_time_stamp, curr_value):
         self.updt_values(curr_time_stamp, curr_value)
-
-        i = 0
-        while i < self.process_latency:
-            self.updt_status()
-            print(self.curr_status)
-            i += 1
+        self.updt_status()
+        print(self.curr_status)
 
 
 
@@ -171,6 +161,13 @@ class slope_detector():
 
         return 0
         
+
+    def new_trade(self):
+        self.trade(self.event, self.event_dir)
+
+        self.continue_level = self.curr_value * (1 + self.event_dir * self.continue_coef)
+        self.reverse_level  = self.curr_value * (1 - self.event_dir * self.reverse_coef)
+
 
     def acq_first_slope(self):
         pass
@@ -266,7 +263,7 @@ def ExpMovingAverage(values, window):
 #%%##########################################################################
 #                                 SCRIPT                                    #
 #############################################################################
-plt.close("all")
+#plt.close("all")
 
 # %% Run parameters
 SYMBOL = 'ETC/USD'
@@ -274,9 +271,12 @@ EMA_SAMPLES = 12
 TIMEFRAME = '1m'
 
 #%% Start OrbBit
-orb.DM.start_API()
+try:
+    orbbit_started
+except NameError:
+    orb.DM.start_API()
+    orbbit_started = 1
 
-#%% Start fetchers
 r = requests.get('http://127.0.0.1:5000/datamanager/fetch/start')
 print(r.json())
 
@@ -300,8 +300,8 @@ i = 1
 samples = len(close)
 while i < samples:
     bot.tick(date8061[i], close[i])
+    print ('Sample ' + str(i) + ' time_stamp ' + str(date8061[i]))
     i += 1
-    print ('Sample ' + str(i))
 
 
 # %% Results
@@ -314,8 +314,8 @@ purchase_x = [purchase[0] for purchase in bot.buy_history]
 purchase_y = [purchase[1] for purchase in bot.buy_history]
 purchase_style = 'go'
 
-plot_w_cursor([[bot.time_stamps, bot.ema, 'b'], 
-               [bot.time_stamps, bot.history, 'r'], 
+plot_w_cursor([[bot.time_stamps, bot.history, 'b'], 
+               [bot.time_stamps, bot.ema, 'r'], 
                [sale_x, sale_y, sale_style],
                [purchase_x, purchase_y, purchase_style],
               ]
