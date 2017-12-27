@@ -136,10 +136,10 @@ class ema_slope_chg_bot():
 
         # debug
         # self.plot_status()
-        print('Sample ' + str(len(self.history)))
-        print(self.curr_status)
-        print(self.curr_ema_value)
-        print(self.curr_slope)
+        # print('Sample ' + str(len(self.history)))
+        # print(self.curr_status)
+        # print(self.curr_ema_value)
+        # print(self.curr_slope)
 
 
 
@@ -325,26 +325,40 @@ close = [ row['ohlcv']['close'] for row in ohlcv]
 ema = ExpMovingAverage(close, EMA_SAMPLES)
 
 #%% Run detector
+sim_ema_samples = list(range(1,20))
+sim_hyst_continue_coef = list( range_step(0, 5 * ema_slope_chg_bot.fee_pcnt, ema_slope_chg_bot.fee_pcnt / 2) )
+sim_hyst_reverse_coef = list( range_step(0, 5 * ema_slope_chg_bot.fee_pcnt, ema_slope_chg_bot.fee_pcnt / 2) )
 
-bot = ema_slope_chg_bot(ema_samples = 5, 
-                        hyst_continue_coef = ema_slope_chg_bot.fee_pcnt,
-                        hyst_reverse_coef = ema_slope_chg_bot.fee_pcnt,
-                        time_stamp = date8061[0], 
-                        curr_value = close[0],
-                       )
+profit = [[[0 for i in range( len(sim_hyst_reverse_coef) )] for j in range( len(sim_hyst_continue_coef) )] for k in range( len(sim_ema_samples) )]
+for sim_ema in range( len(sim_ema_samples) ):
+    for sim_cont in range( len(sim_hyst_continue_coef) ):
+        for sim_rev in range( len(sim_hyst_reverse_coef) ):
+            bot = ema_slope_chg_bot(ema_samples = sim_ema_samples[sim_ema], 
+                                    hyst_continue_coef = sim_hyst_continue_coef[sim_cont],
+                                    hyst_reverse_coef = sim_hyst_reverse_coef[sim_rev],
+                                    time_stamp = date8061[0], 
+                                    curr_value = close[0],
+                                   )
 
-i = 1
-samples = len(close)
-while i < samples:
-    bot.tick(date8061[i], close[i])
-    i += 1
+            i = 1
+            samples = len(close)
+            while i < samples:
+                bot.tick(date8061[i], close[i])
+                i += 1
+
+            profit[sim_ema][sim_cont][sim_rev] = (bot.quote_balance + bot.base_balance * bot.curr_value)  \
+                                                 / (2 * bot.initial_balance) - 1
 
 
-# %% Results
-bot.plot_status()
+profit_arr = np.asarray(profit)
+profit_max = max(profit_arr.flatten())
 
-profit = (bot.quote_balance + bot.base_balance * bot.curr_value)  \
-         / (2 * bot.initial_balance) - 1
+
 
 print('RESULT profit ' + str(profit))
+
+# %% Results
+# bot.plot_status()
+
+
 
