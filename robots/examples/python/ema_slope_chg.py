@@ -275,11 +275,12 @@ try:
     orbbit_started
 except NameError:
     orb.DM.start_API()
+
+    r = requests.get('http://127.0.0.1:5000/datamanager/fetch/start')
+    print(r.json())
+
     orbbit_started = 1
-
-r = requests.get('http://127.0.0.1:5000/datamanager/fetch/start')
-print(r.json())
-
+    
 time.sleep(5)
 
 #%% Get OHLCV
