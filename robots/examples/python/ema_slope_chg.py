@@ -410,9 +410,9 @@ purchase_y = [purchase[1] for purchase in best_bot.buy_history]
 purchase_style = 'go'
 
 plot_w_cursor([[best_bot.time_stamps, best_bot.ema, 'b'],
-#               [best_bot.time_stamps, best_bot.history, 'r'],
-#               [sale_x, sale_y, sale_style],
-#               [purchase_x, purchase_y, purchase_style],
+                [best_bot.time_stamps, best_bot.history, 'r'],
+                [sale_x, sale_y, sale_style],
+                [purchase_x, purchase_y, purchase_style],
               ]
              )
 
