@@ -31,19 +31,19 @@ class ema_slope_chg_bot():
     """Instantiate a slope change detector with hysteresis.
 
     With a slope change it will execute a trade (sell if new slope is descending,
-    buy if new slope is ascending). 
+    buy if new slope is ascending).
     Then it will set hysteresis bands for upper and lower bounds.
     If the curr value surpasses the bands it will:
       - Clear the bands if value went in the desired direction. A profit equal
         to the band minus 2 txn fees is guaranteed.
-      - Make the inverse transaction. A loss equal to the band plus 2 txn fees 
+      - Make the inverse transaction. A loss equal to the band plus 2 txn fees
         will occur.
 
     Args:
 
     Attributes:
         curr_slope (int): +1 ascending, -1 descending
-        ema_noise (doouble): allowed variation in EMA which is not considered 
+        ema_noise (doouble): allowed variation in EMA which is not considered
             as a slope change.
     """
 
@@ -55,7 +55,7 @@ class ema_slope_chg_bot():
     valid_status = ('stop', 'wait_slope_chg', 'wait_in_band',)
     valid_direction = (+1, -1)
     valid_event = ('enter', 'exit')
-    
+
     def __init__(self, hyst_continue_coef, hyst_reverse_coef, ema_samples, time_stamp, curr_value):
 
         self.time_stamps = [time_stamp]
@@ -101,7 +101,7 @@ class ema_slope_chg_bot():
 
 
         elif self.curr_status == 'wait_slope_chg':
-            
+
             if self.prev_slope != self.curr_slope:
                 self.event = 'enter'
                 self.event_dir = self.prev_slope
@@ -112,7 +112,7 @@ class ema_slope_chg_bot():
 
 
         elif self.curr_status == 'wait_in_band':
-            
+
             if  ((self.event_dir == +1) and (self.curr_value > self.continue_level))  \
              or ((self.event_dir == -1) and (self.curr_value < self.continue_level)):
                 self.event = 'exit'
@@ -124,7 +124,7 @@ class ema_slope_chg_bot():
             elif ((self.event_dir == -1) and (self.curr_value > self.reverse_level))  \
              or  ((self.event_dir == +1) and (self.curr_value < self.reverse_level)):
                 self.curr_status = 'wait_slope_chg'
- 
+
         else:
             raise NameError ('Invalid status.')
 
@@ -168,7 +168,7 @@ class ema_slope_chg_bot():
             self.curr_slope = -1
 
         return 0
-        
+
 
     def new_trade(self):
         self.trade(self.event, self.event_dir)
@@ -224,8 +224,8 @@ class ema_slope_chg_bot():
         purchase_y = [purchase[1] for purchase in self.buy_history]
         purchase_style = 'go'
 
-        plot_w_cursor([[self.time_stamps, self.history, 'b'], 
-                       [self.time_stamps, self.ema, 'r'], 
+        plot_w_cursor([[self.time_stamps, self.history, 'b'],
+                       [self.time_stamps, self.ema, 'r'],
                        [sale_x, sale_y, sale_style],
                        [purchase_x, purchase_y, purchase_style],
                       ]
@@ -244,8 +244,8 @@ class DataCursor(object):
 
     def __init__(self, ax):
         self.ax = ax
-        self.annotation = ax.annotate(self.text_template, 
-                xy=(self.x, self.y), xytext=(self.xoffset, self.yoffset), 
+        self.annotation = ax.annotate(self.text_template,
+                xy=(self.x, self.y), xytext=(self.xoffset, self.yoffset),
                 textcoords='offset points', ha='right', va='bottom',
                 bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.5),
                 arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0')
@@ -294,14 +294,11 @@ def range_step(start, stop, step):
 #                           TEST DEFINITIONS                                #
 #############################################################################
 
-profit = [[0 for i in range( len(sim_hyst_coef) )] for j in range( len(sim_ema_samples) )]
-
-
 def test_bot(ema_samples, hyst_coef):
-    bot = ema_slope_chg_bot(ema_samples = ema_samples, 
+    bot = ema_slope_chg_bot(ema_samples = ema_samples,
                             hyst_continue_coef = hyst_coef,
                             hyst_reverse_coef = hyst_coef,
-                            time_stamp = date8061[0], 
+                            time_stamp = date8061[0],
                             curr_value = close[0],
                            )
 
@@ -338,23 +335,23 @@ except NameError:
 
 time.sleep(5)
 
-#%% Get OHLCV
+#%% get OHLCV
 jsonreq = {'symbol': SYMBOL,'timeframe': TIMEFRAME}
 r = requests.get('http://127.0.0.1:5000/datamanager/get/ohlcv',json=jsonreq)
 ohlcv = r.json()
 print(len(ohlcv))
 
-#%% Plot history
+#%% plot history
 date8061 = [ row['date8061'] for row in ohlcv]
 close = [ row['ohlcv']['close'] for row in ohlcv]
 
-#%% Run detector
-sim_ema_samples = list(range(1,50))
-sim_hyst_coef = list( range_step(0, 20 * ema_slope_chg_bot.fee_pcnt, ema_slope_chg_bot.fee_pcnt) )
+#%% simulate detectors with different params
+sim_ema_samples = list(range(1,22))
+sim_hyst_coef = list( range_step(0, 6 * ema_slope_chg_bot.fee_pcnt, ema_slope_chg_bot.fee_pcnt) )
 
 
 
-
+profit = [[0 for i in range( len(sim_hyst_coef) )] for j in range( len(sim_ema_samples) )]
 for sim_ema in range( len(sim_ema_samples) ):
     for sim_hyst in range( len(sim_hyst_coef) ):
         profit[sim_ema][sim_hyst] = test_bot(sim_ema_samples[sim_ema], sim_hyst_coef[sim_hyst])
@@ -364,7 +361,7 @@ profit_arr = np.asarray(profit)
 profit_best = max(profit_arr.flatten())
 
 print('MAX profit ' + str(profit_best))
-   
+
 x = np.arange(0, len(sim_ema_samples), 1)
 y = np.arange(0, len(sim_hyst_coef), 1)
 
@@ -378,9 +375,47 @@ ax.plot_surface(xs, ys, zs, rstride=1, cstride=1, cmap='hot')
 plt.show()
 
 
-best_bot = test_bot(sim_ema_samples[45], sim_hyst_coef[5])
+# %% analyze the bot of your choice
+best_bot_ema_samples = sim_ema_samples[12] # from the 3d plot, you can see which
+                                           # x and y values generate more profit,
+                                           # input them here and run at several
+                                           # intervals to see the real performance
+                                           # over time
+best_bot_hyst = sim_hyst_coef[2]
 
+best_bot = ema_slope_chg_bot(ema_samples = best_bot_ema_samples,
+                             hyst_continue_coef = best_bot_hyst,
+                             hyst_reverse_coef = best_bot_hyst,
+                             time_stamp = date8061[0],
+                             curr_value = close[0],
+                            )
+i = 1
+samples = len(close)
+while i < samples:
+    best_bot.tick(date8061[i], close[i])
+    i += 1
+
+
+best_bot_profit = (best_bot.quote_balance + best_bot.base_balance * best_bot.curr_value) / (2 * best_bot.initial_balance) - 1
 hold_profit = (close[-1] - close[0]) / close[0]
 
-print('Bot has profit ' + str(best_bot))
+
+
+sale_x = [sale[0] for sale in best_bot.sell_history]
+sale_y = [sale[1] for sale in best_bot.sell_history]
+sale_style = 'rx'
+
+purchase_x = [purchase[0] for purchase in best_bot.buy_history]
+purchase_y = [purchase[1] for purchase in best_bot.buy_history]
+purchase_style = 'go'
+
+plot_w_cursor([[best_bot.time_stamps, best_bot.ema, 'b'],
+#               [best_bot.time_stamps, best_bot.history, 'r'],
+#               [sale_x, sale_y, sale_style],
+#               [purchase_x, purchase_y, purchase_style],
+              ]
+             )
+
+
+print('Bot has profit ' + str(best_bot_profit))
 print('Hold profit ' + str(hold_profit))

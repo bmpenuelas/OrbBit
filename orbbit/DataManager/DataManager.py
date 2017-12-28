@@ -56,10 +56,15 @@ def get_datamanager_info(info):
     try:
         return datamanager_info.find( {info: {'$exists': True}} )[0][info]
     except IndexError:
-        datamanager_info.insert_one( {'fetching_symbols': {'BTC/USD': ['1m', '3m', '5m',], 
-                                                           'ETH/USD': ['1m', '3m', '5m',],
-                                                           'ETC/USD': ['1m', '3m', '5m',],
-                                                          } } )
+        # if the database is empty, fetch these datasets by default
+        datamanager_info.insert_one( 
+            {'fetching_symbols': 
+                {'BTC/USD': ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d'], 
+                 'ETH/USD': ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d'],
+                 'ETC/USD': ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d'],
+                } 
+            }
+        )
         return datamanager_info.find( {info: {'$exists': True}} )[0][info]
 
 
@@ -96,7 +101,15 @@ def timeframe_to_ms(timeframe):
                              '*s' seconds
     Returns:
     """
-    if 'm' in timeframe:
+    if   'M' in timeframe:
+        return int(timeframe.replace('d', '')) * 30 * 24 * 60 * 60 * 1000
+    elif 'w' in timeframe:
+        return int(timeframe.replace('d', '')) * 7  * 24 * 60 * 60 * 1000
+    elif 'd' in timeframe:
+        return int(timeframe.replace('d', '')) * 24 * 60 * 60 * 1000
+    elif 'h' in timeframe:
+        return int(timeframe.replace('h', '')) * 60 * 60 * 1000
+    elif 'm' in timeframe:
         return int(timeframe.replace('m', '')) * 60 * 1000
     elif 's' in timeframe:
         return int(timeframe.replace('s', '')) * 1000
@@ -213,12 +226,15 @@ class save_ohlcv(threading.Thread):
 
 
 
-def fill_ohlcv(symbol, timeframe, from_millis=1485216000000):
+def fill_ohlcv(symbol, timeframe, from_millis=0):
     """ Attempt to fill gaps in the DataManager database by fetching many data at once.
         It is limited by how back in time the exchange API provides data.
 
     Example:
-        fill_ohlcv('BTC/USD', '5m', exchange.parse8601('2017-01-24 00:00:00'))
+        symbol = 'BTC/USD'
+        timeframe = '5m'
+        from_millis = exchange.parse8601('2017-01-24 00:00:00')
+        fill_ohlcv(symbol, timeframe, from_millis)
     Args:
         symbol, timeframe, from_millis: See save_ohlcv.
     Returns:
@@ -236,7 +252,7 @@ def fill_ohlcv(symbol, timeframe, from_millis=1485216000000):
     while not fetch_from_API_success:
         try:
             print('Filling ' + symbol +' '+ timeframe)
-            ohlcv = exchange.fetch_ohlcv(symbol, timeframe, since=from_millis)
+            ohlcv = exchange.fetch_ohlcv(symbol, timeframe, since=from_millis, limit=1000)
             fetch_from_API_success = 1
         except:
             print('Exchange ERR. Could not load data to fill OHLCV ' + symbol +' '+ timeframe)
