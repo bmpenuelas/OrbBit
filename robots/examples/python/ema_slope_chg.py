@@ -3,6 +3,9 @@
 
 Set the desired OHLC timeframe and the desired EMA periods for smoothing the curve.
 
+Note: It will perform a lot of simulations to show the effect of the algorithm
+parameters. Expect some processing time if running the whole script at once.
+
 
 Attributes:
     EMA_SAMPLES (int): Higher value gives smoother curves but more delayed response.
@@ -346,18 +349,22 @@ date8061 = [ row['date8061'] for row in ohlcv]
 close = [ row['ohlcv']['close'] for row in ohlcv]
 
 #%% simulate detectors with different params
-sim_ema_samples = list(range(1,22))
-sim_hyst_coef = list( range_step(0, 6 * ema_slope_chg_bot.fee_pcnt, ema_slope_chg_bot.fee_pcnt) )
+sim_ema_samples = list(range(1,100))
+sim_hyst_coef = list( range_step(0, 10 * ema_slope_chg_bot.fee_pcnt, ema_slope_chg_bot.fee_pcnt) )
 
 
 
-profit = [[0 for i in range( len(sim_hyst_coef) )] for j in range( len(sim_ema_samples) )]
+profit     = [[0 for i in range( len(sim_hyst_coef) )] for j in range( len(sim_ema_samples) )]
+profit_pos = [[0 for i in range( len(sim_hyst_coef) )] for j in range( len(sim_ema_samples) )]
 for sim_ema in range( len(sim_ema_samples) ):
     for sim_hyst in range( len(sim_hyst_coef) ):
         profit[sim_ema][sim_hyst] = test_bot(sim_ema_samples[sim_ema], sim_hyst_coef[sim_hyst])
+        profit_pos[sim_ema][sim_hyst] = profit[sim_ema][sim_hyst] if profit[sim_ema][sim_hyst] > 0 else 0
 
 
 profit_arr = np.asarray(profit)
+profit_arr_pos = np.asarray(profit_pos)
+
 profit_best = max(profit_arr.flatten())
 
 print('MAX profit ' + str(profit_best))
@@ -366,22 +373,26 @@ x = np.arange(0, len(sim_ema_samples), 1)
 y = np.arange(0, len(sim_hyst_coef), 1)
 
 xs, ys = np.meshgrid(x, y)
-# z = calculate_R(xs, ys)
 zs = profit_arr[xs, ys]
+zs_pos = profit_arr_pos[xs, ys]
 
 fig = plt.figure()
 ax = Axes3D(fig)
 ax.plot_surface(xs, ys, zs, rstride=1, cstride=1, cmap='hot')
 plt.show()
 
+fig = plt.figure()
+ax = Axes3D(fig)
+ax.plot_surface(xs, ys, zs_pos, rstride=1, cstride=1, cmap='hot')
+plt.show()
 
 # %% analyze the bot of your choice
-best_bot_ema_samples = sim_ema_samples[12] # from the 3d plot, you can see which
+best_bot_ema_samples = sim_ema_samples[80] # from the 3d plot, you can see which
                                            # x and y values generate more profit,
                                            # input them here and run at several
                                            # intervals to see the real performance
                                            # over time
-best_bot_hyst = sim_hyst_coef[2]
+best_bot_hyst = sim_hyst_coef[3]
 
 best_bot = ema_slope_chg_bot(ema_samples = best_bot_ema_samples,
                              hyst_continue_coef = best_bot_hyst,
