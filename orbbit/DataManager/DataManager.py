@@ -20,7 +20,7 @@ import json
 
 #\todo Check exchange.hasFetchOHLCV
 exchange = ccxt.hitbtc2({'verbose': False})
-  
+
 def print_markets():
     markets = exchange.load_markets()
     print(exchange.id, markets)
@@ -42,7 +42,7 @@ def get_datamanager_info(info):
     Args:
         info (str): info field identifier.
             Valid identifiers:
-                'fetching_symbols' dict key : PAIR 
+                'fetching_symbols' dict key : PAIR
                                    dict val : list TIMEFRAME
 
     Returns:
@@ -57,12 +57,12 @@ def get_datamanager_info(info):
         return datamanager_info.find( {info: {'$exists': True}} )[0][info]
     except IndexError:
         # if the database is empty, fetch these datasets by default
-        datamanager_info.insert_one( 
-            {'fetching_symbols': 
-                {'BTC/USD': ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d'], 
-                 'ETH/USD': ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d'],
-                 'ETC/USD': ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d'],
-                } 
+        datamanager_info.insert_one(
+            {'fetching_symbols':
+                {'BTC/USD': ['1m', '3m', '5m', '15m', '30m', '1h', '4h'],
+                 'ETH/USD': ['1m', '3m', '5m', '15m', '30m', '1h', '4h'],
+                 'ETC/USD': ['1m', '3m', '5m', '15m', '30m', '1h', '4h'],
+                }
             }
         )
         return datamanager_info.find( {info: {'$exists': True}} )[0][info]
@@ -73,7 +73,7 @@ from pkg_resources import resource_filename
 datamanager_db_route = resource_filename('orbbit', 'DataManager/datamanager_db.key')
 
 with open(datamanager_db_route) as f:
-    datamanager_db_key = json.load(f)    
+    datamanager_db_key = json.load(f)
 
 datamanager_db_connection = pymongo.MongoClient(datamanager_db_key['url'], datamanager_db_key['port'])
 datamanager_db = datamanager_db_connection[datamanager_db_key['database']]
@@ -147,7 +147,7 @@ def candle_to_document(candle, timeframe):
 
 def start_fetch():
     """ Start all the fetchers which are registered in the database.
-    
+
     Args:
 
     Returns:
@@ -205,7 +205,7 @@ class save_ohlcv(threading.Thread):
                 except:
                     print('Exchange query ERR for ' + self.symbol +' '+ self.timeframe)
                     time.sleep(self.retry_on_xchng_err_interval)
-        
+
             if ohlcv:
                 for candle in ohlcv:
                     new_document = candle_to_document(candle, self.timeframe)
@@ -217,7 +217,7 @@ class save_ohlcv(threading.Thread):
                     except pymongo.errors.DuplicateKeyError as e:
                         # print("Duplicate value, skipping.")
                         pass
-                  
+
                     if new_document['date8061'] > self.last_fetch:
                         self.last_fetch = new_document['date8061']
 
@@ -231,8 +231,8 @@ def fill_ohlcv(symbol, timeframe, from_millis=0):
         It is limited by how back in time the exchange API provides data.
 
     Example:
-        symbol = 'BTC/USD'
-        timeframe = '5m'
+        symbol = 'ETC/USD'
+        timeframe = '15m'
         from_millis = exchange.parse8601('2017-01-24 00:00:00')
         fill_ohlcv(symbol, timeframe, from_millis)
     Args:
@@ -246,7 +246,7 @@ def fill_ohlcv(symbol, timeframe, from_millis=0):
     collection = datamanager_db[symbol_db]
 
     retry_on_xchng_err_interval = 1
-    
+
     filled = 0
     fetch_from_API_success = 0
     while not fetch_from_API_success:
@@ -260,10 +260,11 @@ def fill_ohlcv(symbol, timeframe, from_millis=0):
 
     new_documents = [candle_to_document(candle, timeframe) for candle in ohlcv]
     try:
-        insertion_result = collection.insert_many(new_documents)    
+        insertion_result = collection.insert_many(new_documents, ordered = False )
         filled = len(insertion_result.inserted_ids)
     except pymongo.errors.BulkWriteError as ex:
         print('Nothing to fill ' + symbol +' '+ timeframe)
+        filled = ex.details['nInserted']
     # \todo chech for holes in data
     return filled
 
@@ -275,7 +276,7 @@ def fill_ohlcv(symbol, timeframe, from_millis=0):
 #############################################################################
 
 #----------------------------------------------------------------------------
-# Flask App error funcs redefinition  
+# Flask App error funcs redefinition
 #----------------------------------------------------------------------------
 
 app = Flask(__name__)
@@ -295,7 +296,7 @@ def bad_request(error):
 #----------------------------------------------------------------------------
 
 auth = HTTPBasicAuth()
-""" Add @auth.login_required to a route/method definition to make it 
+""" Add @auth.login_required to a route/method definition to make it
     password-protected.
 """
 
@@ -380,8 +381,8 @@ def fetch_commands(command):
                 new_symbol_fetcher.start()
         else:
             fetching_symbols[symbol] = [timeframe]
-            datamanager_info.update_one({'fetching_symbols': {'$exists': True}}, 
-                                        {"$set": {'fetching_symbols': fetching_symbols, } }, 
+            datamanager_info.update_one({'fetching_symbols': {'$exists': True}},
+                                        {"$set": {'fetching_symbols': fetching_symbols, } },
                                         upsert=True
                                        )
             new_symbol_fetcher = save_ohlcv(symbol, timeframe)
@@ -443,24 +444,24 @@ def get_commands(command):
 
         if 'to' in request.json:
             to_millis   = request.json['to']
-            to_millis   -= (to_millis / timeframe_to_ms(timeframe)) 
+            to_millis   -= (to_millis / timeframe_to_ms(timeframe))
         else:
             to_millis = current_millis() + 10e3
 
         symbol_db = symbol.replace('/', '_')
         collection = datamanager_db[symbol_db]
 
-        query = {'ohlcv': {'$exists': True}, 
-                 'timeframe': timeframe, 
+        query = {'ohlcv': {'$exists': True},
+                 'timeframe': timeframe,
                  'date8061': {'$gt': from_millis, '$lt': to_millis}
                 }
 
-        ohlcv_cursor = collection.find(query, projection)
+        ohlcv_cursor = collection.find(query, projection).sort('date8061', pymongo.ASCENDING)
 
         ohlcv = []
         for doc in ohlcv_cursor:
             ohlcv.append(doc)
-            
+
         if ohlcv == []:
             return jsonify({'error': 'Data not available.'})
         else:
