@@ -12,17 +12,17 @@ orb.DM.start_API()
 import requests
 import ccxt
 
-#%% available subscriptions
-r = requests.get('http://127.0.0.1:5000/datamanager/subscribe')
-subs = r.json()
+#%% Start fetchers
+r = requests.get('http://127.0.0.1:5000/datamanager/fetch/start')
+print(r.json())
 
 #%% request subscription
-jsonreq = {'res':'ohlcv', 'params':{'symbol':'ETC/USD','timeframe':'15m'}}
+jsonreq = {'res':'ohlcv', 'params':{'symbol':'BTC/USD','timeframe':'1m'}}
 r = requests.get('http://127.0.0.1:5000/datamanager/subscribe/add', json=jsonreq)
 subs = r.json()
 
 #%% Get BTC/USD OHLCV 5m
-jsonreq = {'res':'ohlcv', 'params':{'symbol':'ETC/USD','timeframe':'15m'}}
+jsonreq = {'res':'ohlcv', 'params':{'symbol':'BTC/USD','timeframe':'1m'}}
 r = requests.get('http://127.0.0.1:5000/datamanager/get/', json=jsonreq)
 ohlcv = r.json()
 print(len(ohlcv))
@@ -38,8 +38,4 @@ print(r.json())
 
 #%% DataManager status
 r = requests.get('http://127.0.0.1:5000/datamanager')
-print(r.json())
-
-#%% Start fetchers
-r = requests.get('http://127.0.0.1:5000/datamanager/fetch/start')
 print(r.json())

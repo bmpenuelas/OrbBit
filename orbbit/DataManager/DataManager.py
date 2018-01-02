@@ -1,6 +1,8 @@
 import sys
 import time
+
 import threading
+import queue
 
 import numpy as np
 
@@ -143,6 +145,15 @@ def candle_to_document(candle, timeframe):
 
 
 
+def res_params_to_stream_id(res, params):
+    if res == 'ohlcv':
+        return 'ohlcv' + '_' + params['symbol'] + '_' + params['timeframe']
+    else:
+        return -1
+
+
+
+
 #%%##########################################################################
 #                        DATAMANAGER TASKS                                  #
 #############################################################################
@@ -159,7 +170,8 @@ def start_fetch():
     fetching_symbols = get_datamanager_info('fetching_symbols')
     for symbol in fetching_symbols:
         for timeframe in fetching_symbols[symbol]:
-            thread_save_ohlcv = save_ohlcv(symbol, timeframe)
+            params = {'symbol': symbol, 'timeframe': timeframe}
+            thread_save_ohlcv = save_ohlcv(params)
             thread_save_ohlcv.start()
 
     return jsonify({'fetching_symbols': get_datamanager_info('fetching_symbols')})
@@ -175,45 +187,48 @@ class save_ohlcv(threading.Thread):
         symbol (str)
         timeframe (str)
     """
-    def __init__(self, symbol, timeframe):
+    def __init__(self, params):
         threading.Thread.__init__(self)
-        self.symbol = symbol
-        self.symbol_db = symbol.replace('/', '_')
-        self.timeframe = timeframe
+        self.params = params
+
+        self.stream_id = res_params_to_stream_id('ohlcv', params)
+        self.symbol_db = self.params['symbol'].replace('/', '_')
 
         self.curr_time_8061 = current_millis()
 
-        self.fetch_interval = int(timeframe_to_ms(self.timeframe)*0.9)
+        self.fetch_interval = int(timeframe_to_ms(self.params['timeframe'])*0.9)
         self.retry_on_xchng_err_interval = 1
 
         self.last_fetch = 0
 
     def run(self):
-        print('Started fetcher for ' + self.symbol +' '+ self.timeframe)
+        print('Started fetcher for ' + self.params['symbol'] +' '+ self.params['timeframe'])
 
         collection = datamanager_db[self.symbol_db]
         nxt_fetch = self.curr_time_8061
 
-        filled = fill_ohlcv(self.symbol, self.timeframe, exchange.parse8601('2017-01-01 00:00:00'))
-        if filled: print('Filled ' + str(filled) + ' missing entries in ' + self.symbol +' '+ self.timeframe)
+        filled = fill_ohlcv(self.params['symbol'], self.params['timeframe'], exchange.parse8601('2017-01-01 00:00:00'))
+        if filled: print('Filled ' + str(filled) + ' missing entries in ' + self.params['symbol'] +' '+ self.params['timeframe'])
 
         while 1:
             fetch_from_API_success = 0
             while not(fetch_from_API_success):
                 try:
-                    # print('Exchange query for ' + self.symbol +' '+ self.timeframe)
-                    ohlcv = exchange.fetch_ohlcv(self.symbol, self.timeframe, nxt_fetch)
+                    # print('Exchange query for ' + self.params['symbol'] +' '+ self.params['timeframe'])
+                    ohlcv = exchange.fetch_ohlcv(self.params['symbol'], self.params['timeframe'], nxt_fetch)
                     fetch_from_API_success = 1
                 except:
-                    print('Exchange query ERR for ' + self.symbol +' '+ self.timeframe)
+                    print('Exchange query ERR for ' + self.params['symbol'] +' '+ self.params['timeframe'])
                     time.sleep(self.retry_on_xchng_err_interval)
 
             if ohlcv:
                 for candle in ohlcv:
-                    new_document = candle_to_document(candle, self.timeframe)
+                    new_document = candle_to_document(candle, self.params['timeframe'])
 
                     # send to subscribers
-                    #for subs_queue in subscriber_queues['ohlcv']
+                    if self.stream_id in subscriber_queues:
+                        for subs_queue in subscriber_queues[self.stream_id]:
+                            subs_queue.put( {'date8061': new_document['date8061'], 'ohlcv': new_document['ohlcv']} )
 
                     # save in database
                     try:
@@ -369,6 +384,7 @@ def fetch_commands(command):
     elif command == 'add':
         symbol = request.json['symbol']
         timeframe = request.json['timeframe']
+        params = {'symbol': symbol, 'timeframe': timeframe}
 
         fetching_symbols = get_datamanager_info('fetching_symbols')
 
@@ -380,7 +396,7 @@ def fetch_commands(command):
                                             {"$set": {'fetching_symbols': fetching_symbols, }},
                                             upsert=True
                                            )
-                new_symbol_fetcher = save_ohlcv(symbol, timeframe)
+                new_symbol_fetcher = save_ohlcv(params)
                 new_symbol_fetcher.start()
         else:
             fetching_symbols[symbol] = [timeframe]
@@ -388,7 +404,7 @@ def fetch_commands(command):
                                         {"$set": {'fetching_symbols': fetching_symbols, } },
                                         upsert=True
                                        )
-            new_symbol_fetcher = save_ohlcv(symbol, timeframe)
+            new_symbol_fetcher = save_ohlcv(params)
             new_symbol_fetcher.start()
 
         return jsonify({'fetching_symbols': fetching_symbols})
@@ -440,7 +456,7 @@ def get_commands():
 
     # Resource 'ohlcv'
     if get_resource == 'ohlcv':
-        projection = {'ohlcv': True, 'date8061': True, '_id': False}
+        projection = {'date8061': True, 'ohlcv': True}
 
         symbol      = get_parameters['symbol']
         timeframe   = get_parameters['timeframe']
@@ -520,6 +536,7 @@ SUBS_PORT_LIMIT = 6000
 active_subscriptions = {} #dict {'stream_id_a': (HOST, PORT), 'stream_id_b': [(...
 
 subscription_threads = {} # dict {'stream_id_a': thread, ... }
+subscriber_queues = {} # dict {'stream_id_a': [list of queues], ... }
 subscribers = [] # list of threads
 
 
@@ -542,10 +559,8 @@ def subscribe_commands(command):
         stream_resource = request.json['res']
         stream_parameters = request.json['params']
 
-        # create an unique ID per possible stream configuration on each resource
-        if stream_resource == 'ohlcv':
-            stream_id   = 'ohlcv' + '_' + request.json['params']['symbol'] + '_' + request.json['params']['timeframe']
-        else:
+        stream_id   = res_params_to_stream_id(stream_resource, stream_parameters)
+        if stream_id == -1:
             return jsonify({'error': 'Invalid stream_resource.'})
 
     else:
@@ -605,7 +620,16 @@ class subscription_thread(threading.Thread):
             conn, addr = s.accept()
             print('Connected with ' + addr[0] + ':' + str(addr[1]))
 
-            subscribers.append( subscriber_thread(self.stream_id, self.stream_resource, self.stream_parameters, conn, addr) )
+            # create queue
+            new_queue = queue.Queue()
+
+            if self.stream_id in subscriber_queues:
+                subscriber_queues[self.stream_id].append(new_queue)
+            else:
+                subscriber_queues[self.stream_id] = [new_queue]
+
+            # create thread
+            subscribers.append( subscriber_thread(self.stream_id, new_queue, self.stream_resource, self.stream_parameters, conn, addr) )
             subscribers[-1].start()
 
 
@@ -620,9 +644,10 @@ class subscriber_thread(threading.Thread):
 
     Returns:
     """
-    def __init__(self, stream_id, stream_resource, stream_parameters, conn, addr):
+    def __init__(self, stream_id, queue, stream_resource, stream_parameters, conn, addr):
         threading.Thread.__init__(self)
         self.stream_id = stream_id
+        self.queue = queue
         self.stream_resource = stream_resource
         self.stream_parameters = stream_parameters
         self.conn = conn
@@ -630,11 +655,10 @@ class subscriber_thread(threading.Thread):
 
     def run(self):
         print('Subscriber thread for ' + self.stream_id + ' at ' + self.addr[0] + ':' + str(self.addr[1]) )
-        i = 0
         while True:
-            time.sleep(1)
-            self.conn.sendall(str(i).encode('ascii'))
-            i += 1
+            new_data = self.queue.get()
+            self.conn.sendall( json.dumps(new_data).encode('ascii') )
+            self.queue.task_done()
 
 
 
