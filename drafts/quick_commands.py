@@ -9,22 +9,31 @@ import orbbit as orb
 orb.DM.start_API()
 
 #%% Import modules used by these snippets (before sending queries to the API)
-import requests 
+import requests
 import ccxt
 
+#%% available subscriptions
+r = requests.get('http://127.0.0.1:5000/datamanager/subscribe')
+subs = r.json()
+
+#%% request subscription
+jsonreq = {'type':'ETH/USD'}
+r = requests.get('http://127.0.0.1:5000/datamanager/subscribe/stream', json=jsonreq)
+subs = r.json()
+
 #%% Get BTC/USD OHLCV 5m
-jsonreq = {'symbol':'LTC/USD','timeframe':'1m'}
-r = requests.get('http://127.0.0.1:5000/datamanager/get/ohlcv',json=jsonreq)
+jsonreq = {'symbol':'BTC/USD','timeframe':'1m'}
+r = requests.get('http://127.0.0.1:5000/datamanager/get/ohlcv', json=jsonreq)
 ohlcv = r.json()
 print(len(ohlcv))
 
 #%% export json to file
 with open('./save.json', 'w') as f:
     json.dump(ohlcv, f)
-    
+
 #%% Add pair
 jsonreq = {'symbol':'BTC/USD','timeframe':'15m'}
-r = requests.get('http://127.0.0.1:5000/datamanager/fetch/add',json=jsonreq)
+r = requests.get('http://127.0.0.1:5000/datamanager/fetch/add', json=jsonreq)
 print(r.json())
 
 #%% DataManager status

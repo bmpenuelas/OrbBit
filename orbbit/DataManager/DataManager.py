@@ -4,6 +4,8 @@ import threading
 
 import numpy as np
 
+import socket
+
 from   flask import Flask, jsonify, abort, make_response, request
 from   flask_httpauth import HTTPBasicAuth
 
@@ -402,7 +404,10 @@ def fetch_commands(command):
 
 @app.route('/datamanager/get', methods=['GET'])
 def get():
-    """ Show DataManager block available data.
+    """ List DataManager available data.
+
+    Trhough 'get', you can retrieve sets of past data stored in the database.
+    To receive the latest data see '/datamanager/subscribe'
 
     Args:
 
@@ -418,6 +423,7 @@ def get():
 #----------------------------------------------------------------------------
 #   Route /datamanager/get/<command>
 #----------------------------------------------------------------------------
+
 @app.route('/datamanager/get/<string:command>', methods=['GET'])
 def get_commands(command):
     """ Serve data collected by the DataManager block.
@@ -472,6 +478,148 @@ def get_commands(command):
 
 
 
+
+#----------------------------------------------------------------------------
+#   Route /datamanager/subscribe
+#----------------------------------------------------------------------------
+
+valid_subscribe_streams = ('ohlcv',)
+
+@app.route('/datamanager/subscribe', methods=['GET'])
+def subscribe():
+    """ List data streams you can subscribe to.
+
+    When you subscribe, you will be given an IP, PORT tuple where you can
+    listen for the updated data.
+
+    Args:
+
+    Returns:
+        valid_subscribe_streams (str list)
+        active_subscriptions (dict)
+    """
+
+    return jsonify({'valid_subscribe_streams': list(valid_subscribe_streams),
+                    'active_subscriptions': active_subscriptions,
+                   })
+
+
+#----------------------------------------------------------------------------
+#   Route /datamanager/subscribe/<command>
+#----------------------------------------------------------------------------
+
+SUBS_CLIENTS_WAITING_MAX = 10
+
+SUBS_HOST = socket.gethostbyname( 'localhost' )
+SUBS_PORT_BASE = 5100
+SUBS_PORT_LIMIT = 6000
+
+active_subscriptions = {} #dict {'stream_type_a': (HOST, PORT), 'stream_type_b': [(...
+
+subscription_threads = {} # dict {'stream_type_a': thread, ... }
+subscribers = [] # list of threads
+
+
+@app.route('/datamanager/subscribe/<string:command>', methods=['GET'])
+def subscribe_commands(command):
+    """ Serve data collected by the DataManager block.
+
+    Args:
+
+    Returns:
+        IP (str)
+        port (int)
+    """
+
+    # Command <stream>
+    if command == 'stream':
+        stream_type = request.json['type']
+
+        if stream_type in active_subscriptions:
+            return jsonify({stream_type: active_subscriptions[stream_type]})
+        else:
+            port = SUBS_PORT_BASE
+
+            available = 0
+            while available == 0:
+                available = 1
+                for used_type, used_tuple in active_subscriptions.items():
+                    if port == used_tuple[1]:
+                        available = 0
+                        port += 1
+                        break
+
+            active_subscriptions[stream_type] = (SUBS_HOST, port)
+
+            subscription_threads[stream_type] = subscription_thread(stream_type, SUBS_HOST, port)
+            subscription_threads[stream_type].start()
+
+            return jsonify({stream_type: (SUBS_HOST, port)})
+
+
+    else:
+        return jsonify({'error': 'Command not found.'})
+
+
+class subscription_thread(threading.Thread):
+    """ Subscription socket server
+
+    One server is created per stream_type, to serve all clients subscribed to it (subscribers).
+
+    Args:
+
+    Returns:
+    """
+    def __init__(self, stream_type, host, port):
+        threading.Thread.__init__(self)
+        self.stream_type = stream_type
+        self.host = host
+        self.port = port
+
+    def run(self):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            s.bind( (self.host, self.port) )
+        except socket.error as msg:
+            return jsonify({'error': 'Bind failed. Error Code : ' + str(msg[0]) + ' Message ' + msg[1]})
+
+        s.listen(SUBS_CLIENTS_WAITING_MAX)
+
+        while True:
+            conn, addr = s.accept()
+            print('Connected with ' + addr[0] + ':' + str(addr[1]))
+
+            subscribers.append( subscriber_thread(self.stream_type, conn, addr) )
+            subscribers[-1].start()
+
+
+
+class subscriber_thread(threading.Thread):
+    """ Subscriber socket server
+    .
+    One is created per subscriber to send them new data as soon as it is made
+    available trough it's queue.
+
+    Args:
+
+    Returns:
+    """
+    def __init__(self, stream_type, conn, addr):
+        threading.Thread.__init__(self)
+        self.stream_type = stream_type
+        self.conn = conn
+        self.addr = addr
+
+    def run(self):
+        print('Subscriber thread for ' + self.stream_type + ' at ' + self.addr[0] + ':' + str(self.addr[1]) )
+        i = 0
+        while True:
+            time.sleep(1)
+            self.conn.sendall(str(i).encode('ascii'))
+
+
+
+
 #----------------------------------------------------------------------------
 #   Route /ticker
 #----------------------------------------------------------------------------
@@ -509,7 +657,6 @@ class DataManager_API (threading.Thread):
 thread_DataManager_API = DataManager_API('thread_DataManager_API')
 
 
-
 def start_API():
     """ Start DataManager API Server
     Starts in a separate subprocess.
@@ -517,10 +664,8 @@ def start_API():
     Args:
 
     Returns:
-      Subprocess ID.
     """
-
-    print("Starting API Server.")
+    print("Starting DataManager API Server.")
     thread_DataManager_API.start()
 
 
