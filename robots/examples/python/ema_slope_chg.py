@@ -339,8 +339,8 @@ except NameError:
 time.sleep(5)
 
 #%% get OHLCV
-jsonreq = {'symbol': SYMBOL,'timeframe': TIMEFRAME}
-r = requests.get('http://127.0.0.1:5000/datamanager/get/ohlcv',json=jsonreq)
+jsonreq = {'res':'ohlcv', 'params':{'symbol':'ETC/USD','timeframe':'15m'}}
+r = requests.get('http://127.0.0.1:5000/datamanager/get/',json=jsonreq)
 ohlcv = r.json()
 print(len(ohlcv))
 

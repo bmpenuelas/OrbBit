@@ -17,13 +17,13 @@ r = requests.get('http://127.0.0.1:5000/datamanager/subscribe')
 subs = r.json()
 
 #%% request subscription
-jsonreq = {'type':'ETH/USD'}
-r = requests.get('http://127.0.0.1:5000/datamanager/subscribe/stream', json=jsonreq)
+jsonreq = {'res':'ohlcv', 'params':{'symbol':'ETC/USD','timeframe':'15m'}}
+r = requests.get('http://127.0.0.1:5000/datamanager/subscribe/add', json=jsonreq)
 subs = r.json()
 
 #%% Get BTC/USD OHLCV 5m
-jsonreq = {'symbol':'BTC/USD','timeframe':'1m'}
-r = requests.get('http://127.0.0.1:5000/datamanager/get/ohlcv', json=jsonreq)
+jsonreq = {'res':'ohlcv', 'params':{'symbol':'ETC/USD','timeframe':'15m'}}
+r = requests.get('http://127.0.0.1:5000/datamanager/get/', json=jsonreq)
 ohlcv = r.json()
 print(len(ohlcv))
 

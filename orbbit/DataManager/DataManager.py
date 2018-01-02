@@ -212,8 +212,10 @@ class save_ohlcv(threading.Thread):
                 for candle in ohlcv:
                     new_document = candle_to_document(candle, self.timeframe)
 
-                    # print("Fetched OHLCV " + self.symbol + new_document['_id'])
+                    # send to subscribers
+                    #for subs_queue in subscriber_queues['ohlcv']
 
+                    # save in database
                     try:
                         collection.insert_one(new_document)
                     except pymongo.errors.DuplicateKeyError as e:
@@ -265,7 +267,6 @@ def fill_ohlcv(symbol, timeframe, from_millis=0):
         insertion_result = collection.insert_many(new_documents, ordered = False )
         filled = len(insertion_result.inserted_ids)
     except pymongo.errors.BulkWriteError as ex:
-        print('Nothing to fill ' + symbol +' '+ timeframe)
         filled = ex.details['nInserted']
     # \todo chech for holes in data
     return filled
@@ -424,8 +425,8 @@ def get():
 #   Route /datamanager/get/<command>
 #----------------------------------------------------------------------------
 
-@app.route('/datamanager/get/<string:command>', methods=['GET'])
-def get_commands(command):
+@app.route('/datamanager/get/', methods=['GET'])
+def get_commands():
     """ Serve data collected by the DataManager block.
 
     Args:
@@ -433,23 +434,25 @@ def get_commands(command):
     Returns:
         Requested data.
     """
+    get_resource = request.json['res']
+    get_parameters = request.json['params']
 
 
-    # Command <ohlcv>
-    if command == 'ohlcv':
+    # Resource 'ohlcv'
+    if get_resource == 'ohlcv':
         projection = {'ohlcv': True, 'date8061': True, '_id': False}
 
-        symbol      = request.json['symbol']
-        timeframe   = request.json['timeframe']
+        symbol      = get_parameters['symbol']
+        timeframe   = get_parameters['timeframe']
 
-        if 'from' in request.json:
-            from_millis = request.json['from']
+        if 'from' in get_parameters:
+            from_millis = get_parameters['from']
             from_millis -= (from_millis / timeframe_to_ms(timeframe))
         else:
             from_millis = 0
 
-        if 'to' in request.json:
-            to_millis   = request.json['to']
+        if 'to' in get_parameters:
+            to_millis   = get_parameters['to']
             to_millis   -= (to_millis / timeframe_to_ms(timeframe))
         else:
             to_millis = current_millis() + 10e3
@@ -474,7 +477,7 @@ def get_commands(command):
             return jsonify(ohlcv)
 
     else:
-        return jsonify({'error': 'Command not found.'})
+        return jsonify({'error': 'Resource not found.'})
 
 
 
@@ -514,15 +517,18 @@ SUBS_HOST = socket.gethostbyname( 'localhost' )
 SUBS_PORT_BASE = 5100
 SUBS_PORT_LIMIT = 6000
 
-active_subscriptions = {} #dict {'stream_type_a': (HOST, PORT), 'stream_type_b': [(...
+active_subscriptions = {} #dict {'stream_id_a': (HOST, PORT), 'stream_id_b': [(...
 
-subscription_threads = {} # dict {'stream_type_a': thread, ... }
+subscription_threads = {} # dict {'stream_id_a': thread, ... }
 subscribers = [] # list of threads
 
 
 @app.route('/datamanager/subscribe/<string:command>', methods=['GET'])
 def subscribe_commands(command):
-    """ Serve data collected by the DataManager block.
+    """ Manage subscriptions to live data.
+
+    Once a request is received, it returns the IP, PORT tuple where the
+    server is serving new data for the desired stream.
 
     Args:
 
@@ -531,48 +537,58 @@ def subscribe_commands(command):
         port (int)
     """
 
-    # Command <stream>
-    if command == 'stream':
-        stream_type = request.json['type']
+    # Command <add>
+    if command == 'add':
+        stream_resource = request.json['res']
+        stream_parameters = request.json['params']
 
-        if stream_type in active_subscriptions:
-            return jsonify({stream_type: active_subscriptions[stream_type]})
+        # create an unique ID per possible stream configuration on each resource
+        if stream_resource == 'ohlcv':
+            stream_id   = 'ohlcv' + '_' + request.json['params']['symbol'] + '_' + request.json['params']['timeframe']
         else:
-            port = SUBS_PORT_BASE
-
-            available = 0
-            while available == 0:
-                available = 1
-                for used_type, used_tuple in active_subscriptions.items():
-                    if port == used_tuple[1]:
-                        available = 0
-                        port += 1
-                        break
-
-            active_subscriptions[stream_type] = (SUBS_HOST, port)
-
-            subscription_threads[stream_type] = subscription_thread(stream_type, SUBS_HOST, port)
-            subscription_threads[stream_type].start()
-
-            return jsonify({stream_type: (SUBS_HOST, port)})
-
+            return jsonify({'error': 'Invalid stream_resource.'})
 
     else:
         return jsonify({'error': 'Command not found.'})
 
+    if stream_id in active_subscriptions:
+        return jsonify({stream_id: active_subscriptions[stream_id]})
+    else:
+        port = SUBS_PORT_BASE
+
+        available = 0
+        while available == 0:
+            available = 1
+            for used_type, used_tuple in active_subscriptions.items():
+                if port == used_tuple[1]:
+                    available = 0
+                    port += 1
+                    break
+
+        active_subscriptions[stream_id] = (SUBS_HOST, port)
+
+        subscription_threads[stream_id] = subscription_thread(stream_id, stream_resource, stream_parameters, SUBS_HOST, port)
+        subscription_threads[stream_id].start()
+
+        return jsonify({stream_id: (SUBS_HOST, port)})
+
+
+
 
 class subscription_thread(threading.Thread):
-    """ Subscription socket server
+    """ Subscription socket server.
 
-    One server is created per stream_type, to serve all clients subscribed to it (subscribers).
+    One server is created per stream_id, to serve all clients subscribed to it (subscribers).
 
     Args:
 
     Returns:
     """
-    def __init__(self, stream_type, host, port):
+    def __init__(self, stream_id, stream_resource, stream_parameters, host, port):
         threading.Thread.__init__(self)
-        self.stream_type = stream_type
+        self.stream_id = stream_id
+        self.stream_resource = stream_resource
+        self.stream_parameters = stream_parameters
         self.host = host
         self.port = port
 
@@ -589,14 +605,14 @@ class subscription_thread(threading.Thread):
             conn, addr = s.accept()
             print('Connected with ' + addr[0] + ':' + str(addr[1]))
 
-            subscribers.append( subscriber_thread(self.stream_type, conn, addr) )
+            subscribers.append( subscriber_thread(self.stream_id, self.stream_resource, self.stream_parameters, conn, addr) )
             subscribers[-1].start()
 
 
 
 class subscriber_thread(threading.Thread):
-    """ Subscriber socket server
-    .
+    """ Subscriber socket server.
+
     One is created per subscriber to send them new data as soon as it is made
     available trough it's queue.
 
@@ -604,18 +620,21 @@ class subscriber_thread(threading.Thread):
 
     Returns:
     """
-    def __init__(self, stream_type, conn, addr):
+    def __init__(self, stream_id, stream_resource, stream_parameters, conn, addr):
         threading.Thread.__init__(self)
-        self.stream_type = stream_type
+        self.stream_id = stream_id
+        self.stream_resource = stream_resource
+        self.stream_parameters = stream_parameters
         self.conn = conn
         self.addr = addr
 
     def run(self):
-        print('Subscriber thread for ' + self.stream_type + ' at ' + self.addr[0] + ':' + str(self.addr[1]) )
+        print('Subscriber thread for ' + self.stream_id + ' at ' + self.addr[0] + ':' + str(self.addr[1]) )
         i = 0
         while True:
             time.sleep(1)
             self.conn.sendall(str(i).encode('ascii'))
+            i += 1
 
 
 
