@@ -84,6 +84,7 @@ class ema_slope_chg_bot():
 
         self.buy_history = []
         self.sell_history = []
+        self.balance_history = []
 
         self.quote_balance = self.initial_balance
         self.base_balance = self.initial_balance / self.curr_value # same base/quote bal
@@ -203,19 +204,22 @@ class ema_slope_chg_bot():
 
     def new_order(self, order_type):
         if order_type == 'buy':
-            self.quote_balance -= self.order_volume * (1 + self.fee_pcnt)
-            self.base_balance += self.order_volume / self.curr_value
+            self.base_balance += ((self.quote_balance / 2) / self.curr_value) * (1 - self.fee_pcnt)
+            self.quote_balance /= 2
 
             self.buy_history.append([self.curr_time_stamp, self.curr_value])
 
         elif order_type == 'sell':
-            self.quote_balance += self.order_volume * (1 - self.fee_pcnt)
-            self.base_balance -= self.order_volume / self.curr_value
+            self.quote_balance += ((self.base_balance / 2) * self.curr_value) * (1 - self.fee_pcnt)
+            self.base_balance /= 2
 
             self.sell_history.append([self.curr_time_stamp, self.curr_value])
 
         else:
             raise ValueError
+
+        self.balance_history.append([self.curr_time_stamp, self.base_balance * self.curr_value + self.quote_balance])
+
 
 
     def plot_status(self):
@@ -350,7 +354,7 @@ close = [ row['ohlcv']['close'] for row in ohlcv]
 
 #%% simulate detectors with different params
 sim_ema_samples = list(range(1,100))
-sim_hyst_coef = list( range_step(0, 10 * ema_slope_chg_bot.fee_pcnt, ema_slope_chg_bot.fee_pcnt) )
+sim_hyst_coef = list( range_step(2 * ema_slope_chg_bot.fee_pcnt, 5 * ema_slope_chg_bot.fee_pcnt, ema_slope_chg_bot.fee_pcnt) )
 
 
 
@@ -387,12 +391,12 @@ ax.plot_surface(xs, ys, zs_pos, rstride=1, cstride=1, cmap='hot')
 plt.show()
 
 # %% analyze the bot of your choice
-best_bot_ema_samples = sim_ema_samples[80] # from the 3d plot, you can see which
+best_bot_ema_samples = sim_ema_samples[70] # from the 3d plot, you can see which
                                            # x and y values generate more profit,
                                            # input them here and run at several
                                            # intervals to see the real performance
                                            # over time
-best_bot_hyst = sim_hyst_coef[3]
+best_bot_hyst = sim_hyst_coef[2]
 
 best_bot = ema_slope_chg_bot(ema_samples = best_bot_ema_samples,
                              hyst_continue_coef = best_bot_hyst,
@@ -420,13 +424,21 @@ purchase_x = [purchase[0] for purchase in best_bot.buy_history]
 purchase_y = [purchase[1] for purchase in best_bot.buy_history]
 purchase_style = 'go'
 
-plot_w_cursor([[best_bot.time_stamps, best_bot.ema, 'b'],
+balance_x = [purchase[0] for purchase in best_bot.balance_history]
+balance_y = [purchase[1] for purchase in best_bot.balance_history]
+balance_style = 'b'
+
+
+plot_w_cursor([ [best_bot.time_stamps, best_bot.ema, 'b'],
                 [best_bot.time_stamps, best_bot.history, 'r'],
                 [sale_x, sale_y, sale_style],
                 [purchase_x, purchase_y, purchase_style],
               ]
              )
 
+plot_w_cursor([ [balance_x, balance_y, balance_style],
+              ]
+             )
 
 print('Bot has profit ' + str(best_bot_profit))
 print('Hold profit ' + str(hold_profit))

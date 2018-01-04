@@ -2,7 +2,7 @@ clc
 addpath ../../../../matlab-json
 json.startup
 
-api = 'http://localhost:5000/ticker';
+api = 'http://127.0.0.1:5000/datamanager/get/';
 
 figure(1)
 while 1

@@ -226,9 +226,8 @@ class save_ohlcv(threading.Thread):
                     new_document = candle_to_document(candle, self.params['timeframe'])
 
                     # send to subscribers
-                    if self.stream_id in subscriber_queues:
-                        for subs_queue in subscriber_queues[self.stream_id]:
-                            subs_queue.put( {'date8061': new_document['date8061'], 'ohlcv': new_document['ohlcv']} )
+                    new_data = {'date8061': new_document['date8061'], 'ohlcv': new_document['ohlcv']}
+                    send_to_subscribers(self.stream_id, new_data)
 
                     # save in database
                     try:
@@ -538,6 +537,21 @@ active_subscriptions = {} #dict {'stream_id_a': (HOST, PORT), 'stream_id_b': [(.
 subscription_threads = {} # dict {'stream_id_a': thread, ... }
 subscriber_queues = {} # dict {'stream_id_a': [list of queues], ... }
 subscribers = [] # list of threads
+
+def send_to_subscribers(stream_id, data):
+    """ Sends new data to all subscribed processes.
+
+    Note: When instantiating a new subscriber, a new queue must be added to the
+    'subscriber_queues' list and passed to the subscriber thread.
+
+    Args:
+        stream_id (str) unique stream identifier
+        data (dict) json-like structure containing the new data
+    Returns:
+    """
+    if stream_id in subscriber_queues:
+        for subs_queue in subscriber_queues[stream_id]:
+            subs_queue.put( data )
 
 
 @app.route('/datamanager/subscribe/<string:command>', methods=['GET'])
