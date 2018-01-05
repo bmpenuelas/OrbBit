@@ -4,21 +4,26 @@
 
 import orbbit as orb
 
-import socket   #for sockets
-import sys  #for exit
+import socket
+import sys 
 import requests
 import json
 
 
 #%% Start DataManager
 orb.DM.start_API()
+
+# start the fetchers that ask the exchange for new data
 r = requests.get('http://127.0.0.1:5000/datamanager/fetch/start')
-print(r.json())
 
 #%% request subscription
 jsonreq = {'res':'ohlcv', 'params':{'symbol':'BTC/USD','timeframe':'1m'}}
 r = requests.get('http://127.0.0.1:5000/datamanager/subscribe/add', json=jsonreq)
-subs = list( r.json().values() )[0]
+response_dict = r.json()
+print(response_dict)
+
+#%% keep only the (IP, PORT) part of the response, the socket expects a tuple.
+subs = list( response_dict.values() )[0] 
 ip_port_tuple = tuple(subs)
 
 #%% connect socket
@@ -33,7 +38,7 @@ print('Connected')
 
 #%% get new data as soon as it is generated
 while 1:
-    reply = s.recv(4096)
+    reply = s.recv(4096) # waits here until new data is received
     reply_dict = json.loads(reply.decode('ascii')) # turn string into data structure
     print('Live new data:')
     print(reply_dict)
