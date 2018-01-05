@@ -348,6 +348,10 @@ def datamanager_status():
 
     return jsonify({'fetching_symbols': get_datamanager_info('fetching_symbols')})
 
+    caracteristicas_coche = {'color': 'azul', 'motor_cv': 100, 'extras': ['AC', 'elevalunas']  }
+    caracteristicas_coche['color']
+    'azul'
+
 
 #----------------------------------------------------------------------------
 #   Route /datamanager/fetch
@@ -381,9 +385,9 @@ def fetch_commands(command):
 
     # Command <add>
     elif command == 'add':
-        symbol = request.json['symbol']
-        timeframe = request.json['timeframe']
-        params = {'symbol': symbol, 'timeframe': timeframe}
+        params = request.json['params']
+        symbol = params['symbol']
+        timeframe = params['timeframe']
 
         fetching_symbols = get_datamanager_info('fetching_symbols')
 
@@ -634,17 +638,21 @@ class subscription_thread(threading.Thread):
             conn, addr = s.accept()
             print('Connected with ' + addr[0] + ':' + str(addr[1]))
 
-            # create queue
-            new_queue = queue.Queue()
+            accept_subscriber(self.stream_id, conn)
 
-            if self.stream_id in subscriber_queues:
-                subscriber_queues[self.stream_id].append(new_queue)
-            else:
-                subscriber_queues[self.stream_id] = [new_queue]
 
-            # create thread
-            subscribers.append( subscriber_thread(self.stream_id, new_queue, self.stream_resource, self.stream_parameters, conn, addr) )
-            subscribers[-1].start()
+
+def accept_subscriber(stream_id, conn):
+    new_queue = queue.Queue()
+
+    if stream_id in subscriber_queues:
+        subscriber_queues[stream_id].append(new_queue)
+    else:
+        subscriber_queues[stream_id] = [new_queue]
+
+    # create thread
+    subscribers.append( subscriber_thread(stream_id, new_queue, conn) )
+    subscribers[-1].start()
 
 
 
@@ -658,17 +666,14 @@ class subscriber_thread(threading.Thread):
 
     Returns:
     """
-    def __init__(self, stream_id, queue, stream_resource, stream_parameters, conn, addr):
+    def __init__(self, stream_id, queue, conn):
         threading.Thread.__init__(self)
         self.stream_id = stream_id
         self.queue = queue
-        self.stream_resource = stream_resource
-        self.stream_parameters = stream_parameters
         self.conn = conn
-        self.addr = addr
 
     def run(self):
-        print('Subscriber thread for ' + self.stream_id + ' at ' + self.addr[0] + ':' + str(self.addr[1]) )
+        print('New subscriber for ' + self.stream_id )
         while True:
             new_data = self.queue.get()
             self.conn.sendall( json.dumps(new_data).encode('ascii') )
@@ -724,7 +729,6 @@ def start_API():
     """
     print("Starting DataManager API Server.")
     thread_DataManager_API.start()
-
 
 
 #----------------------------------------------------------------------------

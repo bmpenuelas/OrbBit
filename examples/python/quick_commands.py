@@ -18,7 +18,7 @@ r = requests.get('http://127.0.0.1:5000/datamanager/fetch/start')
 print(r.json())
 
 #%% request subscription
-jsonreq = {'res':'ohlcv', 'params':{'symbol':'BTC/USD','timeframe':'1m'}}
+jsonreq = {'res':'ohlcv', 'params':{'symbol':'XRP/USD','timeframe':'5m'}}
 r = requests.get('http://127.0.0.1:5000/datamanager/subscribe/add', json=jsonreq)
 subs = r.json()
 
@@ -38,7 +38,7 @@ with open('./save.json', 'w') as f:
     json.dump(ohlcv, f)
 
 #%% Add pair
-jsonreq = {'symbol':'BTC/USD','timeframe':'15m'}
+jsonreq = {'res':'ohlcv', 'params':{'symbol':'LTC/USD','timeframe':'15m'}}
 r = requests.get('http://127.0.0.1:5000/datamanager/fetch/add', json=jsonreq)
 print(r.json())
 
