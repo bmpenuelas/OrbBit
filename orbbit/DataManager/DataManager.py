@@ -727,7 +727,7 @@ class subscription_thread(threading.Thread):
                 # start the data transformation thread, it will subscribe to one or more fetchers
                 # and update the transformed data queue.
                 if self.stream_resource == 'macd':
-                    transform_data_threads.append( transform_thread_macd(self.stream_parameters) )
+                    new_transform_thread( transform_thread_macd(self.stream_parameters) )
 
             else:
                 return jsonify({'error': 'Stream resource not valid.'})
@@ -754,6 +754,12 @@ def new_subscriber_thread(new_queue, conn):
     subscribers.append( subscriber_thread(new_queue, conn) )
     subscribers[-1].start()
 
+
+def new_transform_thread(new_trhead):
+    """ Create thread that sends new data in the queue through the conn.
+    """
+    transform_data_threads.append( new_trhead )
+    transform_data_threads[-1].start()
 
 
 class subscriber_thread(threading.Thread):
