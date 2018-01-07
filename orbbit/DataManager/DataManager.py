@@ -1,3 +1,5 @@
+
+# External imports
 import sys
 import time
 
@@ -15,6 +17,10 @@ import ccxt
 
 import pymongo
 import json
+
+
+# OrbBit imports
+from orbbit.DataManager.data_transform.data_transform import *
 
 
 
@@ -531,22 +537,23 @@ def get_commands():
 
     # Resource 'ohlcv'
     if get_resource == 'ohlcv':
-        projection = {'date8061': True, 'ohlcv': True}
-
         symbol      = get_parameters['symbol']
         timeframe   = get_parameters['timeframe']
 
         if 'from' in get_parameters:
             from_millis = get_parameters['from']
-            from_millis -= (from_millis / timeframe_to_ms(timeframe))
+            from_millis -= (from_millis % timeframe_to_ms(timeframe))
         else:
             from_millis = 0
 
         if 'to' in get_parameters:
-            to_millis   = get_parameters['to']
-            to_millis   -= (to_millis / timeframe_to_ms(timeframe))
+            to_millis = get_parameters['to']
+            to_millis -= (to_millis % timeframe_to_ms(timeframe))
         else:
             to_millis = current_millis() + 10e3
+
+
+        projection = {'date8061': True, 'ohlcv': True}
 
         symbol_db = symbol.replace('/', '_')
         collection = datamanager_db[symbol_db]
@@ -566,6 +573,54 @@ def get_commands():
             return jsonify({'error': 'Data not available.'})
         else:
             return jsonify(ohlcv)
+
+
+    elif get_resource == 'ema':
+        symbol      = get_parameters['symbol']
+        timeframe   = get_parameters['timeframe']
+        ema_samples   = get_parameters['ema_samples']
+
+        if 'from' in get_parameters:
+            from_millis = get_parameters['from']
+            from_millis -= (from_millis % timeframe_to_ms(timeframe))
+        else:
+            from_millis = 0
+
+        if 'to' in get_parameters:
+            to_millis = get_parameters['to']
+            to_millis -= (to_millis % timeframe_to_ms(timeframe))
+        else:
+            to_millis = current_millis() + 10e3
+
+
+        projection = {'date8061': True, 'ohlcv': True}
+
+        symbol_db = symbol.replace('/', '_')
+        collection = datamanager_db[symbol_db]
+
+        query = {'ohlcv': {'$exists': True},
+                 'timeframe': timeframe,
+                 'date8061': {'$gt': from_millis, '$lt': to_millis}
+                }
+
+        ohlcv_cursor = collection.find(query, projection).sort('date8061', pymongo.DESCENDING)
+
+        ohlcv = []
+        for doc in ohlcv_cursor:
+            ohlcv.append(doc)
+
+        if ohlcv == []:
+            return jsonify({'error': 'Data not available.'})
+        else:
+            # EMA will be calculated with 'close' price
+            date8061 = [ row['date8061'] for row in ohlcv]
+            close = [ row['ohlcv']['close'] for row in ohlcv]
+            ema = EMA_history(ema_samples, close)
+
+            ema_dict = [{'date8061': date8061[i], 'ema': ema[i]} for i in range(len(ema))]
+
+            return jsonify(ema_dict)
+
 
     else:
         return jsonify({'error': 'Resource not found.'})
