@@ -146,16 +146,36 @@ def candle_to_document(candle, timeframe):
 
 
 def res_params_to_stream_id(res, params):
-    if res == 'ohlcv':
-        return 'ohlcv' + '_' + params['symbol'] + '_' + params['timeframe']
-    else:
-        return -1
+    """
+    Example:
+    res = 'macd'
+    params = {
+              'symbol': 'BTC/USD',
+              'timeframe': '15m',
+              'ema_slow': 5,
+              'ema_fast': 12,
+             }
+    res_params_to_stream_id(res, params)
+    """
+    for valid_resources in valid_subscribtion_resources.values():
+        for val in valid_resources:
+            if val == res:
+                param_values = [params[key] for key in sorted(params.keys())]
+                stream_id = res
+                for param_value in param_values:
+                    stream_id += '_' + str(param_value) 
+                return stream_id
+    return -1
 
 
 
+
+#############################################################################
+#                             DATAMANAGER TASKS                             #
+#############################################################################
 
 #%%##########################################################################
-#                        DATAMANAGER TASKS                                  #
+#                                DATA FETCH                                 #
 #############################################################################
 
 def start_fetch():
@@ -171,21 +191,22 @@ def start_fetch():
     for symbol in fetching_symbols:
         for timeframe in fetching_symbols[symbol]:
             params = {'symbol': symbol, 'timeframe': timeframe}
-            thread_save_ohlcv = save_ohlcv(params)
-            thread_save_ohlcv.start()
+            new_fetch_thread_ohlcv = fetch_thread_ohlcv(params)
+            new_fetch_thread_ohlcv.start()
 
     return jsonify({'fetching_symbols': get_datamanager_info('fetching_symbols')})
 
 
 
-class save_ohlcv(threading.Thread):
+class fetch_thread_ohlcv(threading.Thread):
     """ Thread that fetches data for a given symbol/timeframe.
 
     On start, it will try to fill missing data points.
 
     Args:
-        symbol (str)
-        timeframe (str)
+        params (dict)
+            symbol (str)
+            timeframe (str)
     """
     def __init__(self, params):
         threading.Thread.__init__(self)
@@ -254,7 +275,7 @@ def fill_ohlcv(symbol, timeframe, from_millis=0):
         from_millis = exchange.parse8601('2017-01-24 00:00:00')
         fill_ohlcv(symbol, timeframe, from_millis)
     Args:
-        symbol, timeframe, from_millis: See save_ohlcv.
+        symbol, timeframe, from_millis: See fetch_thread_ohlcv.
     Returns:
         filled: gaps successfully filled.
         missing: gaps that could not be filled.
@@ -269,7 +290,7 @@ def fill_ohlcv(symbol, timeframe, from_millis=0):
     fetch_from_API_success = 0
     while not fetch_from_API_success:
         try:
-            print('Filling ' + symbol +' '+ timeframe)
+            # print('Filling ' + symbol +' '+ timeframe)
             ohlcv = exchange.fetch_ohlcv(symbol, timeframe, since=from_millis, limit=1000)
             fetch_from_API_success = 1
         except:
@@ -289,7 +310,58 @@ def fill_ohlcv(symbol, timeframe, from_millis=0):
 
 
 #%%##########################################################################
-#                          DATAMANAGER API                                  #
+#                              DATA TRANSFORM                               #
+#############################################################################
+
+class transform_thread_macd(threading.Thread):
+    """ Calculate MACD.
+
+    Difference between two EMA with different sample number.
+
+    Args:
+        symbol (str)
+        timeframe (str)
+        ema_slow (int)
+        ema_fast (int)
+    Returns:
+        macd (double)
+        ema_slow (double)
+        ema_fast (double)
+        cross (boolean)
+    """
+    def __init__(self, stream_parameters):
+        threading.Thread.__init__(self)
+        parameters = stream_parameters
+
+        self.symbol = parameters['symbol']
+        self.timeframe = parameters['timeframe']
+        self.ema_slow = parameters['ema_slow']
+        self.ema_fast = parameters['ema_fast']
+
+        self.stream_id = res_params_to_stream_id('macd', parameters)
+
+        # subscribe to fetcher
+        ohlcv_params = {'symbol': self.symbol, 'timeframe': self.timeframe}
+        stream_id_ohlcv = res_params_to_stream_id('ohlcv', ohlcv_params)
+
+        self.ohlcv_queue = new_subscriber_queue(stream_id_ohlcv)
+
+
+    def run(self):
+        while True:
+            # new fetcher data
+            new_ohlcv = self.ohlcv_queue.get()
+
+        #   calculate
+
+            # send to subscribers
+            send_to_subscribers(self.stream_id, new_ohlcv)
+
+
+
+
+#%%##########################################################################
+#                              DATAMANAGER API                              #
 #############################################################################
 
 #----------------------------------------------------------------------------
@@ -399,7 +471,7 @@ def fetch_commands(command):
                                             {"$set": {'fetching_symbols': fetching_symbols, }},
                                             upsert=True
                                            )
-                new_symbol_fetcher = save_ohlcv(params)
+                new_symbol_fetcher = fetch_thread_ohlcv(params)
                 new_symbol_fetcher.start()
         else:
             fetching_symbols[symbol] = [timeframe]
@@ -407,7 +479,7 @@ def fetch_commands(command):
                                         {"$set": {'fetching_symbols': fetching_symbols, } },
                                         upsert=True
                                        )
-            new_symbol_fetcher = save_ohlcv(params)
+            new_symbol_fetcher = fetch_thread_ohlcv(params)
             new_symbol_fetcher.start()
 
         return jsonify({'fetching_symbols': fetching_symbols})
@@ -505,8 +577,6 @@ def get_commands():
 #   Route /datamanager/subscribe
 #----------------------------------------------------------------------------
 
-valid_subscribe_streams = ('ohlcv',)
-
 @app.route('/datamanager/subscribe', methods=['GET'])
 def subscribe():
     """ List data streams you can subscribe to.
@@ -517,13 +587,20 @@ def subscribe():
     Args:
 
     Returns:
-        valid_subscribe_streams (str list)
-        active_subscriptions (dict)
+        valid_subscribtion_resources (str list)
+        active_subscription_services (str list)
     """
 
-    return jsonify({'valid_subscribe_streams': list(valid_subscribe_streams),
-                    'active_subscriptions': active_subscriptions,
+    return jsonify({'valid_subscribtion_resources': valid_subscribtion_resources,
+                    'active_subscription_services': active_subscription_services,
                    })
+
+
+# Types that are implemented
+valid_subscribtion_resources = {'fetched': ['ohlcv',],
+                                'transformed': ['macd',],
+                               }
+
 
 
 #----------------------------------------------------------------------------
@@ -536,8 +613,9 @@ SUBS_HOST = socket.gethostbyname( 'localhost' )
 SUBS_PORT_BASE = 5100
 SUBS_PORT_LIMIT = 6000
 
-active_subscriptions = {} #dict {'stream_id_a': (HOST, PORT), 'stream_id_b': [(...
+active_subscription_services = {} #dict {'stream_id_a': (HOST, PORT), 'stream_id_b': [(...
 
+transform_data_threads = []
 subscription_threads = {} # dict {'stream_id_a': thread, ... }
 subscriber_queues = {} # dict {'stream_id_a': [list of queues], ... }
 subscribers = [] # list of threads
@@ -581,30 +659,29 @@ def subscribe_commands(command):
         if stream_id == -1:
             return jsonify({'error': 'Invalid stream_resource.'})
 
+        if stream_id in active_subscription_services:
+            return jsonify({stream_id: active_subscription_services[stream_id]})
+        else:
+            port = SUBS_PORT_BASE
+
+            available = 0
+            while available == 0:
+                available = 1
+                for used_type, used_tuple in active_subscription_services.items():
+                    if port == used_tuple[1]:
+                        available = 0
+                        port += 1
+                        break
+
+            active_subscription_services[stream_id] = (SUBS_HOST, port)
+
+            subscription_threads[stream_id] = subscription_thread(stream_resource, stream_parameters, SUBS_HOST, port)
+            subscription_threads[stream_id].start()
+
+            return jsonify({stream_id: (SUBS_HOST, port)})
+
     else:
         return jsonify({'error': 'Command not found.'})
-
-    if stream_id in active_subscriptions:
-        return jsonify({stream_id: active_subscriptions[stream_id]})
-    else:
-        port = SUBS_PORT_BASE
-
-        available = 0
-        while available == 0:
-            available = 1
-            for used_type, used_tuple in active_subscriptions.items():
-                if port == used_tuple[1]:
-                    available = 0
-                    port += 1
-                    break
-
-        active_subscriptions[stream_id] = (SUBS_HOST, port)
-
-        subscription_threads[stream_id] = subscription_thread(stream_id, stream_resource, stream_parameters, SUBS_HOST, port)
-        subscription_threads[stream_id].start()
-
-        return jsonify({stream_id: (SUBS_HOST, port)})
-
 
 
 
@@ -617,13 +694,14 @@ class subscription_thread(threading.Thread):
 
     Returns:
     """
-    def __init__(self, stream_id, stream_resource, stream_parameters, host, port):
+    def __init__(self, stream_resource, stream_parameters, host, port):
         threading.Thread.__init__(self)
-        self.stream_id = stream_id
         self.stream_resource = stream_resource
         self.stream_parameters = stream_parameters
         self.host = host
         self.port = port
+
+        self.stream_id = res_params_to_stream_id(self.stream_resource, self.stream_parameters)
 
     def run(self):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -632,17 +710,34 @@ class subscription_thread(threading.Thread):
         except socket.error as msg:
             return jsonify({'error': 'Bind failed. Error Code : ' + str(msg[0]) + ' Message ' + msg[1]})
 
+        # Accept new subscribers for this stream_id
         s.listen(SUBS_CLIENTS_WAITING_MAX)
 
         while True:
             conn, addr = s.accept()
             print('Connected with ' + addr[0] + ':' + str(addr[1]))
 
-            accept_subscriber(self.stream_id, conn)
+            new_subs_q = new_subscriber_queue(self.stream_id)
+            new_subscriber_thread(new_subs_q, conn)
+
+            if self.stream_resource in valid_subscribtion_resources['fetched']:
+                # fetchers update the queue when they get new data
+                pass
+            elif self.stream_resource in valid_subscribtion_resources['transformed']:
+                # start the data transformation thread, it will subscribe to one or more fetchers
+                # and update the transformed data queue.
+                if self.stream_resource == 'macd':
+                    transform_data_threads.append( transform_thread_macd(self.stream_parameters) )
+
+            else:
+                return jsonify({'error': 'Stream resource not valid.'})
 
 
 
-def accept_subscriber(stream_id, conn):
+
+def new_subscriber_queue(stream_id):
+    """ Return a new queue where new 'stream_id' data can be fed and retrieved.
+    """
     new_queue = queue.Queue()
 
     if stream_id in subscriber_queues:
@@ -650,8 +745,13 @@ def accept_subscriber(stream_id, conn):
     else:
         subscriber_queues[stream_id] = [new_queue]
 
-    # create thread
-    subscribers.append( subscriber_thread(stream_id, new_queue, conn) )
+    return new_queue
+
+
+def new_subscriber_thread(new_queue, conn):
+    """ Create thread that sends new data in the queue through the conn.
+    """
+    subscribers.append( subscriber_thread(new_queue, conn) )
     subscribers[-1].start()
 
 
@@ -666,14 +766,13 @@ class subscriber_thread(threading.Thread):
 
     Returns:
     """
-    def __init__(self, stream_id, queue, conn):
+    def __init__(self, queue, conn):
         threading.Thread.__init__(self)
-        self.stream_id = stream_id
         self.queue = queue
         self.conn = conn
 
     def run(self):
-        print('New subscriber for ' + self.stream_id )
+        print('New subscriber thread.')
         while True:
             new_data = self.queue.get()
             self.conn.sendall( json.dumps(new_data).encode('ascii') )

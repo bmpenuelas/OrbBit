@@ -5,7 +5,7 @@
 import orbbit as orb
 
 import socket
-import sys 
+import sys
 import requests
 import json
 
@@ -17,13 +17,13 @@ orb.DM.start_API()
 r = requests.get('http://127.0.0.1:5000/datamanager/fetch/start')
 
 #%% request subscription
-jsonreq = {'res':'ohlcv', 'params':{'symbol':'BTC/USD','timeframe':'1m'}}
+jsonreq = {'res':'macd', 'params':{'symbol':'BTC/USD', 'timeframe':'1m', 'ema_fast': 5, 'ema_slow': 12}}
 r = requests.get('http://127.0.0.1:5000/datamanager/subscribe/add', json=jsonreq)
 response_dict = r.json()
 print(response_dict)
 
 #%% keep only the (IP, PORT) part of the response, the socket expects a tuple.
-subs = list( response_dict.values() )[0] 
+subs = list( response_dict.values() )[0]
 ip_port_tuple = tuple(subs)
 
 #%% connect socket
