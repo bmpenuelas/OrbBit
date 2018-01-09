@@ -1,25 +1,16 @@
 
-# External imports
 import sys
 import time
-
 import threading
 import queue
-
 import numpy as np
-
 import socket
-
 from   flask import Flask, jsonify, abort, make_response, request
 from   flask_httpauth import HTTPBasicAuth
-
 import ccxt
-
 import pymongo
 import json
 
-
-# OrbBit imports
 from orbbit.DataManager.data_transform.data_transform import *
 
 
@@ -94,6 +85,28 @@ fetching_symbols = get_datamanager_info('fetching_symbols')
 
 
 
+def get_db_ohlcv(symbol, timeframe, from_millis, to_millis):
+    """Get 'ohlcv' documents from db.
+
+    Args:
+        symbol, timeframe, from_millis, to_millis
+    Returns:
+        pymongo cursor pointing to the docs
+    """
+    projection = {'date8061': True, 'ohlcv': True}
+
+    symbol_db = symbol.replace('/', '_')
+    collection = datamanager_db[symbol_db]
+
+    query = {'ohlcv': {'$exists': True},
+             'timeframe': timeframe,
+             'date8061': {'$gt': from_millis, '$lt': to_millis}
+            }
+
+    return collection.find(query, projection).sort('date8061', pymongo.ASCENDING)
+
+
+
 #%%--------------------------------------------------------------------------
 # Generic functions
 #----------------------------------------------------------------------------
@@ -102,7 +115,16 @@ def current_millis():
     return time.time() * 1000
 
 
-def timeframe_to_ms(timeframe):
+
+def cursor_to_list(db_cursor):
+    destination_list = []
+    for doc in db_cursor:
+        destination_list.append(doc)
+    return destination_list
+
+
+
+def timeframe_to_millis(timeframe):
     """ Convert from readable string to milliseconds.
     Args:
 
@@ -132,7 +154,7 @@ def candle_to_document(candle, timeframe):
     """ Convert exchange candles (ohlcv) to database documents.
     Args:
         candle: as output by ccxt ohlcv
-        timeframe: see timeframe_to_ms for valid values
+        timeframe: see timeframe_to_millis for valid values
     Returns:
         document for MongoDB.
     """
@@ -158,8 +180,8 @@ def res_params_to_stream_id(res, params):
     params = {
               'symbol': 'BTC/USD',
               'timeframe': '15m',
-              'ema_slow': 5,
               'ema_fast': 12,
+              'ema_slow': 5,
              }
     res_params_to_stream_id(res, params)
     """
@@ -169,7 +191,7 @@ def res_params_to_stream_id(res, params):
                 param_values = [params[key] for key in sorted(params.keys())]
                 stream_id = res
                 for param_value in param_values:
-                    stream_id += '_' + str(param_value) 
+                    stream_id += '_' + str(param_value)
                 return stream_id
     return -1
 
@@ -223,13 +245,13 @@ class fetch_thread_ohlcv(threading.Thread):
 
         self.curr_time_8061 = current_millis()
 
-        self.fetch_interval = int(timeframe_to_ms(self.params['timeframe'])*0.9)
+        self.fetch_interval = int(timeframe_to_millis(self.params['timeframe'])*0.9)
         self.retry_on_xchng_err_interval = 1
 
         self.last_fetch = 0
 
     def run(self):
-        print('Started fetcher for ' + self.params['symbol'] +' '+ self.params['timeframe'])
+        # print('Started fetcher for ' + self.params['symbol'] +' '+ self.params['timeframe'])
 
         collection = datamanager_db[self.symbol_db]
         nxt_fetch = self.curr_time_8061
@@ -327,13 +349,14 @@ class transform_thread_macd(threading.Thread):
     Args:
         symbol (str)
         timeframe (str)
-        ema_slow (int)
         ema_fast (int)
+        ema_slow (int)
     Returns:
         macd (double)
-        ema_slow (double)
         ema_fast (double)
-        cross (boolean)
+        ema_slow (double)
+        cross (1 / 0)
+        rising (1 / 0)
     """
     def __init__(self, stream_parameters):
         threading.Thread.__init__(self)
@@ -341,8 +364,8 @@ class transform_thread_macd(threading.Thread):
 
         self.symbol = parameters['symbol']
         self.timeframe = parameters['timeframe']
-        self.ema_slow = parameters['ema_slow']
         self.ema_fast = parameters['ema_fast']
+        self.ema_slow = parameters['ema_slow']
 
         self.stream_id = res_params_to_stream_id('macd', parameters)
 
@@ -354,14 +377,66 @@ class transform_thread_macd(threading.Thread):
 
 
     def run(self):
+        # get enough previous values to calculate each EMA
+        from_millis = current_millis() - (self.ema_slow + 3) * timeframe_to_millis(self.timeframe)
+        to_millis = current_millis() + 10e3
+
+        ohlcv_cursor = get_db_ohlcv(self.symbol, self.timeframe, from_millis, to_millis)
+        ohlcv = cursor_to_list(ohlcv_cursor)
+
+        if len(ohlcv) < self.ema_slow:
+            raise ValueError('Data for MACD not available.')
+        else:
+            # EMA will be calculated with 'close' price
+            close = [ row['ohlcv']['close'] for row in ohlcv]
+
+
+        history_vals = close[-self.ema_slow :]
+
+        macd_prev = EMA_tick(self.ema_fast, history_vals[-self.ema_fast :])  \
+                    - EMA_tick(self.ema_slow, history_vals)
+
+
         while True:
             # new fetcher data
             new_ohlcv = self.ohlcv_queue.get()
+            new_close = new_ohlcv['ohlcv']['close']
+            new_date8061 = new_ohlcv['date8061']
 
-        #   calculate
+            # calc EMA and MACD
+            history_vals = history_vals[1 :]
+            history_vals.append(new_close)
+
+            ema_fast_val = EMA_tick(self.ema_fast, history_vals[-self.ema_fast :])
+            ema_slow_val = EMA_tick(self.ema_slow, history_vals)
+
+            macd = ema_fast_val - ema_slow_val
+
+            if (macd_prev > 0) != (macd > 0):
+                cross = 1
+            else:
+                cross = 0
+
+            rising = 1 if (macd > 0) else 0
+
+
+            macd_dict = {
+                         'date8061': new_date8061,
+                         'macd':     {
+                                      'macd': macd,
+                                      'ema_fast': ema_fast_val,
+                                      'ema_slow': ema_slow_val,
+                                      'cross': cross,
+                                      'rising': rising,
+                                     }
+                        }
+            # macd_dict = {'aaa': 123}
+
+            macd_prev = macd
+            self.ohlcv_queue.task_done()
 
             # send to subscribers
-            send_to_subscribers(self.stream_id, new_ohlcv)
+            send_to_subscribers(self.stream_id, macd_dict)
 
 
 
@@ -542,32 +617,20 @@ def get_commands():
 
         if 'from' in get_parameters:
             from_millis = get_parameters['from']
-            from_millis -= (from_millis % timeframe_to_ms(timeframe))
+            from_millis -= (from_millis % timeframe_to_millis(timeframe))
         else:
             from_millis = 0
 
         if 'to' in get_parameters:
             to_millis = get_parameters['to']
-            to_millis -= (to_millis % timeframe_to_ms(timeframe))
+            to_millis -= (to_millis % timeframe_to_millis(timeframe))
         else:
             to_millis = current_millis() + 10e3
 
 
-        projection = {'date8061': True, 'ohlcv': True}
+        ohlcv_cursor = get_db_ohlcv(symbol, timeframe, from_millis, to_millis)
 
-        symbol_db = symbol.replace('/', '_')
-        collection = datamanager_db[symbol_db]
-
-        query = {'ohlcv': {'$exists': True},
-                 'timeframe': timeframe,
-                 'date8061': {'$gt': from_millis, '$lt': to_millis}
-                }
-
-        ohlcv_cursor = collection.find(query, projection).sort('date8061', pymongo.ASCENDING)
-
-        ohlcv = []
-        for doc in ohlcv_cursor:
-            ohlcv.append(doc)
+        ohlcv = cursor_to_list(ohlcv_cursor)
 
         if ohlcv == []:
             return jsonify({'error': 'Data not available.'})
@@ -582,32 +645,20 @@ def get_commands():
 
         if 'from' in get_parameters:
             from_millis = get_parameters['from']
-            from_millis -= (from_millis % timeframe_to_ms(timeframe))
+            from_millis -= (from_millis % timeframe_to_millis(timeframe))
         else:
             from_millis = 0
 
         if 'to' in get_parameters:
             to_millis = get_parameters['to']
-            to_millis -= (to_millis % timeframe_to_ms(timeframe))
+            to_millis -= (to_millis % timeframe_to_millis(timeframe))
         else:
             to_millis = current_millis() + 10e3
 
 
-        projection = {'date8061': True, 'ohlcv': True}
+        ohlcv_cursor = get_db_ohlcv(symbol, timeframe, from_millis, to_millis)
 
-        symbol_db = symbol.replace('/', '_')
-        collection = datamanager_db[symbol_db]
-
-        query = {'ohlcv': {'$exists': True},
-                 'timeframe': timeframe,
-                 'date8061': {'$gt': from_millis, '$lt': to_millis}
-                }
-
-        ohlcv_cursor = collection.find(query, projection).sort('date8061', pymongo.DESCENDING)
-
-        ohlcv = []
-        for doc in ohlcv_cursor:
-            ohlcv.append(doc)
+        ohlcv = cursor_to_list(ohlcv_cursor)
 
         if ohlcv == []:
             return jsonify({'error': 'Data not available.'})
@@ -770,7 +821,7 @@ class subscription_thread(threading.Thread):
 
         while True:
             conn, addr = s.accept()
-            print('Connected with ' + addr[0] + ':' + str(addr[1]))
+            print('Subscribtion ' + self.stream_id + ' requested by ' + addr[0] + ':' + str(addr[1]))
 
             new_subs_q = new_subscriber_queue(self.stream_id)
             new_subscriber_thread(new_subs_q, conn)

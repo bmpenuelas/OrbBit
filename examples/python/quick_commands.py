@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 #%% Start fetchers
 r = requests.get('http://127.0.0.1:5000/datamanager/fetch/start')
 print(r.json())
+time.sleep(10)
 
 #%% request subscription
 jsonreq = {'res':'ohlcv', 'params':{'symbol':'XRP/USD','timeframe':'5m'}}
@@ -42,8 +43,8 @@ print(len(ema_dict_b))
 date8061 = [ row['date8061'] for row in ema_dict_a]
 ema_a = [ row['ema'] for row in ema_dict_a]
 ema_b = [ row['ema'] for row in ema_dict_b]
-plt.plot(date8061, ema_a)
-plt.plot(date8061, ema_b)
+plt.plot(date8061, ema_a, 'b')
+plt.plot(date8061, ema_b, 'g')
 
 #%% export json to file
 with open('./save.json', 'w') as f:
