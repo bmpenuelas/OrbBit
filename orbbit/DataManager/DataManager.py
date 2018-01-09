@@ -1,17 +1,16 @@
 
 import sys
+from   pkg_resources  import resource_filename
 import time
 import threading
 import queue
 import numpy as np
 import socket
-from   flask import Flask, jsonify, abort, make_response, request
+from   flask          import Flask, jsonify, abort, make_response, request
 from   flask_httpauth import HTTPBasicAuth
 import ccxt
 import pymongo
 import json
-
-from orbbit.DataManager.data_transform.data_transform import *
 
 
 
@@ -70,7 +69,6 @@ def get_datamanager_info(info):
 
 
 
-from pkg_resources import resource_filename
 datamanager_db_route = resource_filename('orbbit', 'DataManager/datamanager_db.key')
 
 with open(datamanager_db_route) as f:

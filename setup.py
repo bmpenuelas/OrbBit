@@ -29,6 +29,7 @@ setup(name='orbbit',
           'flask_httpauth',
           'pymongo',
           'matplotlib',
+          'python-telegram-bot',
       ],
       # scripts=['bin/start_hi'],
       # entry_points={
