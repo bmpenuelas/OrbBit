@@ -30,6 +30,7 @@ setup(name='orbbit',
           'pymongo',
           'matplotlib',
           'python-telegram-bot',
+          'telethon',
       ],
       # scripts=['bin/start_hi'],
       # entry_points={

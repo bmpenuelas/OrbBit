@@ -12,3 +12,6 @@
 
 # Keys
 *.key
+
+# Sessions
+*.session
