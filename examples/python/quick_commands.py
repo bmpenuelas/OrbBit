@@ -4,6 +4,7 @@ orb.DM.start_API()
 
 #%% Import modules used by these snippets (before sending queries to the API)
 import requests
+import time
 import ccxt
 import matplotlib.pyplot as plt
 

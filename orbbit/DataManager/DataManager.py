@@ -14,7 +14,6 @@ import json
 
 from   orbbit.DataManager.data_transform.data_transform import *
 
-
 #%%--------------------------------------------------------------------------
 # EXCHANGES SETUP
 #----------------------------------------------------------------------------

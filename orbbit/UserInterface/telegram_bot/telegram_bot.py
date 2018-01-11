@@ -1,5 +1,6 @@
 
 import sys
+import threading
 import logging
 import time
 import socket
@@ -29,11 +30,16 @@ with open(bot_token_route) as f:
 
 updater = Updater(token = bot_token_key['token'])
 dispatcher = updater.dispatcher
+job_queue = updater.job_queue
 
 
 #############################################################################
 #                               BOT COMMANDS                                #
 #############################################################################
+
+def foo():
+    print("FOO")
+
 
 def start(bot, update):
     bot.send_message(chat_id=update.message.chat_id, text="Dame amorsito.")
@@ -58,15 +64,83 @@ dispatcher.add_handler(caps_handler)
 
 
 
-macd_requests = []
-def macd_alert(bot, update):
-    bot.send_message(chat_id=update.message.chat_id, text="MACD.")
+def command_alert_macd(bot, update, args):
+    text = 'Starting MACD cross monitoring with params: '
+    for arg in args:
+        text += (arg + ' ')
+    bot.send_message(chat_id=update.message.chat_id, text=text)
 
-    if not update.message.chat_id in macd_requests:
-        macd_requests.append(update.message.chat_id)
+    user_requesting = update.message.chat_id
 
-start_handler = CommandHandler('macd_alert', macd_alert)
+    symbol = args[0]
+    timeframe = args[1]
+    ema_fast = int(args[2])
+    ema_slow = int(args[3])
+
+    # macd subscription required params
+    params = {'symbol': symbol, 'timeframe': timeframe, 'ema_fast': ema_fast, 'ema_slow': ema_slow}
+
+
+    new_macd_thread = alert_macd(user_requesting, params)
+    new_macd_thread.start()
+
+
+start_handler = CommandHandler('macd_alert', command_alert_macd, pass_args=True)
 dispatcher.add_handler(start_handler)
+
+
+class alert_macd(threading.Thread):
+    """ Thread that subscribes to MACD and sends an alert on cross.
+
+    Args:
+        user_requesting (id) telegram bot user id
+        params (dict) params as expected by macd subscription
+    """
+    def __init__(self, user_requesting, params):
+        threading.Thread.__init__(self)
+
+        self.user_requesting = user_requesting
+        self.params = params
+
+        
+        #%% request subscription
+        jsonreq = {'res':'macd', 'params':params}
+        r = requests.get('http://127.0.0.1:5000/datamanager/subscribe/add', json=jsonreq)
+        response_dict = r.json()
+        print(response_dict)
+
+        #%% keep only the (IP, PORT) part of the response, the socket expects a tuple.
+        subs = list( response_dict.values() )[0]
+        ip_port_tuple = tuple(subs)
+
+        #%% connect socket
+        try:
+            self.subscription_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        except socket.error:
+            print('Failed to create socket')
+            sys.exit()
+
+        self.subscription_socket.connect( ip_port_tuple )
+        print('Bot connected to MACD subscription socket')
+
+    def run(self):
+
+        #%% get new data as soon as it is generated
+        date8061 = []
+        ema_fast = []
+        ema_slow = []
+
+        while 1:
+            reply = self.subscription_socket.recv(4096) # waits here until new data is received
+            reply_dict = json.loads(reply.decode('ascii')) # turn string into data structure
+            print('Telegram bot alert_macd thread got new subs data.')
+            # print(reply_dict)
+
+            if reply_dict['macd']['cross']:
+                buy_sell = 'buy' if reply_dict['macd']['rising'] else 'sell'
+                price = reply_dict['ohlcv']['close']
+
+                macd_message(updater.bot, self.user_requesting, self.params['symbol'], self.params['timeframe'], buy_sell, price)
 
 
 
@@ -76,59 +150,14 @@ def macd_message(bot, user, symbol, timeframe, buy_sell, price):
                     )
 
 
-#%%--------------------------------------------------------------------------
-# Script mode
-#----------------------------------------------------------------------------
+#%%##########################################################################
+#                                 START BOT                                 #
+#############################################################################
+updater.start_polling()
+
+
+#%%##########################################################################
+#                                SCRIPT MODE                                #
+#############################################################################
 if __name__ == '__main__':
-    print("UserInterface in script mode.")
-    updater.start_polling()
-
-    import orbbit as orb
-    orb.DM.start_API()
-
-
-    # start the fetchers that ask the exchange for new data
-    r = requests.get('http://127.0.0.1:5000/datamanager/fetch/start')
-    time.sleep(10)
-
-    #%% request subscription
-    jsonreq = {'res':'macd', 'params':{'symbol':'BTC/USD', 'timeframe':'1m', 'ema_fast': 5, 'ema_slow': 12}}
-    r = requests.get('http://127.0.0.1:5000/datamanager/subscribe/add', json=jsonreq)
-    response_dict = r.json()
-    print(response_dict)
-
-    #%% keep only the (IP, PORT) part of the response, the socket expects a tuple.
-    subs = list( response_dict.values() )[0]
-    ip_port_tuple = tuple(subs)
-
-    #%% connect socket
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    except socket.error:
-        print('Failed to create socket')
-        sys.exit()
-
-    s.connect( ip_port_tuple )
-    print('Connected')
-
-    #%% get new data as soon as it is generated
-    date8061 = []
-    ema_fast = []
-    ema_slow = []
-
-    while 1:
-        reply = s.recv(4096) # waits here until new data is received
-        reply_dict = json.loads(reply.decode('ascii')) # turn string into data structure
-        print('Live new data:')
-        print(reply_dict)
-
-        if reply_dict['macd']['cross']:
-            symbol = 'BTC/USD'
-            timeframe = '1m'
-            buy_sell = 'buy' if reply_dict['macd']['rising'] else 'sell'
-            price = reply_dict['ohlcv']['close']
-
-            for user in macd_requests:
-                macd_message(updater.bot, user, symbol, timeframe, buy_sell, price)
-
-
+    print("Telegram Bot in script mode.")
