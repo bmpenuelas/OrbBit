@@ -12,6 +12,7 @@ import ccxt
 import pymongo
 import json
 
+from   orbbit.DataManager.data_transform.data_transform import *
 
 
 #%%--------------------------------------------------------------------------
@@ -426,7 +427,8 @@ class transform_thread_macd(threading.Thread):
                                       'ema_slow': ema_slow_val,
                                       'cross': cross,
                                       'rising': rising,
-                                     }
+                                     },
+                         'ohlcv':    new_ohlcv['ohlcv']
                         }
             # macd_dict = {'aaa': 123}
 
@@ -941,7 +943,7 @@ def start_API():
 
 
 #----------------------------------------------------------------------------
-# Script-run mode
+# Script mode
 #----------------------------------------------------------------------------
 if __name__ == '__main__':
     print("DataManager in script mode.")
