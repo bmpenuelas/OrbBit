@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 
 import sys
 import threading
@@ -10,6 +11,10 @@ from   pkg_resources import resource_filename
 from   telegram.ext  import Updater, CommandHandler, MessageHandler, Filters
 
 
+#----------------------------------------------------------------------------
+# LOG
+#----------------------------------------------------------------------------
+LOCAL_HOST = socket.gethostbyname( 'localhost' )
 
 #----------------------------------------------------------------------------
 # LOG
@@ -105,7 +110,7 @@ class alert_macd(threading.Thread):
         
         #%% request subscription
         jsonreq = {'res':'macd', 'params':params}
-        r = requests.get('http://127.0.0.1:5000/datamanager/subscribe/add', json=jsonreq)
+        r = requests.get('http://' + LOCAL_HOST + ':5000/datamanager/subscribe/add', json=jsonreq)
         response_dict = r.json()
         print(response_dict)
 
@@ -133,12 +138,13 @@ class alert_macd(threading.Thread):
         while 1:
             reply = self.subscription_socket.recv(4096) # waits here until new data is received
             reply_dict = json.loads(reply.decode('ascii')) # turn string into data structure
-            print('Telegram bot alert_macd thread got new subs data.')
+            # print('Telegram bot alert_macd thread got new subs data.')
             # print(reply_dict)
 
             if reply_dict['macd']['cross']:
                 buy_sell = 'buy' if reply_dict['macd']['rising'] else 'sell'
                 price = reply_dict['ohlcv']['close']
+                print('Sending Telegram bot alert_macd.')
 
                 macd_message(updater.bot, self.user_requesting, self.params['symbol'], self.params['timeframe'], buy_sell, price)
 

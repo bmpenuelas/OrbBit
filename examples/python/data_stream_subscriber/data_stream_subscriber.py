@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 # Subscriber example:
 #   1- Tell the API which data stream you want to subscribe to.
 #   2- Listen for new data timely delivered in the returned IP, PORT
@@ -12,16 +14,18 @@ import time
 import matplotlib.pyplot as plt
 
 
+ORBBIT_HOST = socket.gethostbyname( 'localhost' )
+
 #%% Start DataManager
 orb.DM.start_API()
 
 # start the fetchers that ask the exchange for new data
-r = requests.get('http://127.0.0.1:5000/datamanager/fetch/start')
+r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/fetch/start')
 time.sleep(10)
 
 #%% request subscription
 jsonreq = {'res':'macd', 'params':{'symbol':'BTC/USD', 'timeframe':'1m', 'ema_fast': 5, 'ema_slow': 12}}
-r = requests.get('http://127.0.0.1:5000/datamanager/subscribe/add', json=jsonreq)
+r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/subscribe/add', json=jsonreq)
 response_dict = r.json()
 print(response_dict)
 

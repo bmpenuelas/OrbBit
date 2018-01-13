@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 
 import sys
 from   pkg_resources  import resource_filename
@@ -500,9 +501,6 @@ def datamanager_status():
 
     return jsonify({'fetching_symbols': get_datamanager_info('fetching_symbols')})
 
-    caracteristicas_coche = {'color': 'azul', 'motor_cv': 100, 'extras': ['AC', 'elevalunas']  }
-    caracteristicas_coche['color']
-    'azul'
 
 
 #----------------------------------------------------------------------------
@@ -714,7 +712,7 @@ valid_subscribtion_resources = {'fetched': ['ohlcv',],
 
 SUBS_CLIENTS_WAITING_MAX = 10
 
-SUBS_HOST = socket.gethostbyname( 'localhost' )
+ORBBIT_HOST = socket.gethostbyname( 'localhost' )
 SUBS_PORT_BASE = 5100
 SUBS_PORT_LIMIT = 6000
 
@@ -778,12 +776,12 @@ def subscribe_commands(command):
                         port += 1
                         break
 
-            active_subscription_services[stream_id] = (SUBS_HOST, port)
+            active_subscription_services[stream_id] = (ORBBIT_HOST, port)
 
-            subscription_threads[stream_id] = subscription_thread(stream_resource, stream_parameters, SUBS_HOST, port)
+            subscription_threads[stream_id] = subscription_thread(stream_resource, stream_parameters, ORBBIT_HOST, port)
             subscription_threads[stream_id].start()
 
-            return jsonify({stream_id: (SUBS_HOST, port)})
+            return jsonify({stream_id: (ORBBIT_HOST, port)})
 
     else:
         return jsonify({'error': 'Command not found.'})

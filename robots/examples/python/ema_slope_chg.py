@@ -27,6 +27,8 @@ except NameError:
     import time
 
 
+LOCAL_HOST = socket.gethostbyname( 'localhost' )
+
 #%%##########################################################################
 #                   EMA SLOPE DETECTOR DEFINITIONS                          #
 #############################################################################
@@ -335,7 +337,7 @@ try:
 except NameError:
     orb.DM.start_API()
 
-    r = requests.get('http://127.0.0.1:5000/datamanager/fetch/start')
+    r = requests.get('http://' + LOCAL_HOST + ':5000/datamanager/fetch/start')
     print(r.json())
 
     orbbit_started = 1
@@ -344,7 +346,7 @@ time.sleep(5)
 
 #%% get OHLCV
 jsonreq = {'res':'ohlcv', 'params':{'symbol':'ETC/USD','timeframe':'15m'}}
-r = requests.get('http://127.0.0.1:5000/datamanager/get/',json=jsonreq)
+r = requests.get('http://' + LOCAL_HOST + ':5000/datamanager/get/',json=jsonreq)
 ohlcv = r.json()
 print(len(ohlcv))
 
