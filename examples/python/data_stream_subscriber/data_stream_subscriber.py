@@ -14,15 +14,16 @@ import time
 import matplotlib.pyplot as plt
 
 
-ORBBIT_HOST = socket.gethostbyname( 'localhost' )
+# ORBBIT_HOST = socket.gethostbyname( 'localhost' )
+ORBBIT_HOST = '172.31.31.52'
 
 #%% Start DataManager
 orb.DM.start_API()
 
 # start the fetchers that ask the exchange for new data
-time.sleep(10)
+time.sleep(5)
 r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/fetch/start')
-time.sleep(10)
+time.sleep(5)
 
 #%% request subscription
 jsonreq = {'res':'macd', 'params':{'symbol':'BTC/USDT', 'timeframe':'1m', 'ema_fast': 5, 'ema_slow': 12}}
@@ -35,14 +36,14 @@ subs = list( response_dict.values() )[0]
 ip_port_tuple = tuple(subs)
 
 #%% connect socket
-time.sleep(10)
+time.sleep(5)
 try:
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 except socket.error:
     print('Failed to create socket')
     sys.exit()
 
-time.sleep(10)
+time.sleep(5)
 s.connect( ip_port_tuple )
 print('Connected')
 

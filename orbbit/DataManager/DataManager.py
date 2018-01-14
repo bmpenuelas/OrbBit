@@ -719,7 +719,13 @@ valid_subscribtion_resources = {'fetched': ['ohlcv',],
 
 SUBS_CLIENTS_WAITING_MAX = 10
 
-ORBBIT_HOST = socket.gethostbyname( 'localhost' )
+serverName = socket.gethostname() #Get the server name
+print('ORBBIT Server Name:' + serverName)
+
+# ORBBIT_HOST = socket.gethostbyname( 'localhost' )
+ORBBIT_HOST = socket.gethostbyname(serverName) #Get server IP
+print('ORBBIT on IP ' + ORBBIT_HOST)
+
 SUBS_PORT_BASE = 5100
 SUBS_PORT_LIMIT = 6000
 
@@ -927,7 +933,7 @@ class DataManager_API (threading.Thread):
 
     def run(self):
         print('DataManager_API STARTED with threadID ' + self.name)
-        app.run(debug=False)
+        app.run(host="0.0.0.0", port=5000, debug=False)
         print('DataManager_API STOPPED with threadID ' + self.name)
 
 

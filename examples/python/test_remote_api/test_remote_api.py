@@ -6,7 +6,7 @@ import ccxt
 import matplotlib.pyplot as plt
 import socket
 
-ORBBIT_HOST = '18.221.245.50'
+ORBBIT_HOST = '172.31.31.52'
 
 #%% DataManager status
 r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager')
