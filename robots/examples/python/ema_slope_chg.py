@@ -328,7 +328,7 @@ def test_bot(ema_samples, hyst_coef):
 plt.close("all")
 
 # %% Run parameters
-SYMBOL = 'ETC/USD'
+SYMBOL = 'ETC/USDT'
 TIMEFRAME = '15m'
 
 #%% Start OrbBit
@@ -345,7 +345,7 @@ except NameError:
 time.sleep(5)
 
 #%% get OHLCV
-jsonreq = {'res':'ohlcv', 'params':{'symbol':'ETC/USD','timeframe':'15m'}}
+jsonreq = {'res':'ohlcv', 'params':{'symbol':'ETC/USDT','timeframe':'15m'}}
 r = requests.get('http://' + LOCAL_HOST + ':5000/datamanager/get/',json=jsonreq)
 ohlcv = r.json()
 print(len(ohlcv))

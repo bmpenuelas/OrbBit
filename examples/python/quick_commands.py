@@ -8,6 +8,7 @@ import requests
 import time
 import ccxt
 import matplotlib.pyplot as plt
+import socket
 
 ORBBIT_HOST = socket.gethostbyname( 'localhost' )
 
@@ -17,12 +18,12 @@ print(r.json())
 time.sleep(10)
 
 #%% request subscription
-jsonreq = {'res':'ohlcv', 'params':{'symbol':'BTG/USD','timeframe':'5m'}}
+jsonreq = {'res':'ohlcv', 'params':{'symbol':'BTG/USDT','timeframe':'5m'}}
 r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/subscribe/add', json=jsonreq)
 subs = r.json()
 
 #%% Get OHLCV
-jsonreq = {'res':'ohlcv', 'params':{'symbol':'BTC/USD','timeframe':'1m'}}
+jsonreq = {'res':'ohlcv', 'params':{'symbol':'BTC/USDT','timeframe':'1m'}}
 r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/get/', json=jsonreq)
 ohlcv = r.json()
 print(len(ohlcv))
@@ -33,12 +34,12 @@ close = [ row['ohlcv']['close'] for row in ohlcv]
 plt.plot(date8061, close)
 
 #%% Get EMA
-jsonreq = {'res':'ema', 'params':{'symbol':'BTC/USD','timeframe':'1m', 'ema_samples': 12}}
+jsonreq = {'res':'ema', 'params':{'symbol':'BTC/USDT','timeframe':'1m', 'ema_samples': 12}}
 r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/get/', json=jsonreq)
 ema_dict_a = r.json()
 print(len(ema_dict_a))
 
-jsonreq = {'res':'ema', 'params':{'symbol':'BTC/USD','timeframe':'1m', 'ema_samples': 5}}
+jsonreq = {'res':'ema', 'params':{'symbol':'BTC/USDT','timeframe':'1m', 'ema_samples': 5}}
 r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/get/', json=jsonreq)
 ema_dict_b = r.json()
 print(len(ema_dict_b))
@@ -55,7 +56,7 @@ with open('./save.json', 'w') as f:
     json.dump(ohlcv, f)
 
 #%% Add pair
-jsonreq = {'res':'ohlcv', 'params':{'symbol':'BTG/USD','timeframe':'5m'}}
+jsonreq = {'res':'ohlcv', 'params':{'symbol':'BTG/USDT','timeframe':'5m'}}
 r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/fetch/add', json=jsonreq)
 print(r.json())
 

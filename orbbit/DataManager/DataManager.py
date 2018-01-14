@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import sys
+import os
 from   pkg_resources  import resource_filename
 import time
 import threading
@@ -27,8 +28,14 @@ def print_markets():
     print(exchange.id, markets)
 
 
+def symbol_os(symbol):
+    if os.name == 'nt':
+        return symbol.replace('/USDT', '/USD')
+    else:
+        return symbol        
+
 def fetch_ticker():
-    return exchange.fetch_ticker('BTC/USD')
+    return exchange.fetch_ticker(symbol_os('BTC/USDT'))
 
 
 #%%--------------------------------------------------------------------------
@@ -60,9 +67,9 @@ def get_datamanager_info(info):
         # if the database is empty, fetch these datasets by default
         datamanager_info.insert_one(
             {'fetching_symbols':
-                {'BTC/USD': ['1m', '3m', '5m', '15m', '30m', '1h', '4h'],
-                 'ETH/USD': ['1m', '3m', '5m', '15m', '30m', '1h', '4h'],
-                 'ETC/USD': ['1m', '3m', '5m', '15m', '30m', '1h', '4h'],
+                {'BTC/USDT': ['1m', '3m', '5m', '15m', '30m', '1h', '4h'],
+                 'ETH/USDT': ['1m', '3m', '5m', '15m', '30m', '1h', '4h'],
+                 'ETC/USDT': ['1m', '3m', '5m', '15m', '30m', '1h', '4h'],
                 }
             }
         )
@@ -177,7 +184,7 @@ def res_params_to_stream_id(res, params):
     Example:
     res = 'macd'
     params = {
-              'symbol': 'BTC/USD',
+              'symbol': 'BTC/USDT',
               'timeframe': '15m',
               'ema_fast': 12,
               'ema_slow': 5,
@@ -263,7 +270,7 @@ class fetch_thread_ohlcv(threading.Thread):
             while not(fetch_from_API_success):
                 try:
                     # print('Exchange query for ' + self.params['symbol'] +' '+ self.params['timeframe'])
-                    ohlcv = exchange.fetch_ohlcv(self.params['symbol'], self.params['timeframe'], nxt_fetch)
+                    ohlcv = exchange.fetch_ohlcv(symbol_os(self.params['symbol']), self.params['timeframe'], nxt_fetch)
                     fetch_from_API_success = 1
                 except:
                     print('Exchange query ERR for ' + self.params['symbol'] +' '+ self.params['timeframe'])
@@ -297,7 +304,7 @@ def fill_ohlcv(symbol, timeframe, from_millis=0):
         It is limited by how back in time the exchange API provides data.
 
     Example:
-        symbol = 'ETC/USD'
+        symbol = 'ETC/USDT'
         timeframe = '15m'
         from_millis = exchange.parse8601('2017-01-24 00:00:00')
         fill_ohlcv(symbol, timeframe, from_millis)
@@ -318,7 +325,7 @@ def fill_ohlcv(symbol, timeframe, from_millis=0):
     while not fetch_from_API_success:
         try:
             # print('Filling ' + symbol +' '+ timeframe)
-            ohlcv = exchange.fetch_ohlcv(symbol, timeframe, since=from_millis, limit=1000)
+            ohlcv = exchange.fetch_ohlcv(symbol_os(symbol), timeframe, since=from_millis, limit=1000)
             fetch_from_API_success = 1
         except:
             print('Exchange ERR. Could not load data to fill OHLCV ' + symbol +' '+ timeframe)
@@ -896,7 +903,7 @@ class subscriber_thread(threading.Thread):
 
 @app.route('/ticker', methods=['GET'])
 def get_ticker():
-    """ Get BTC/USD ticker info.
+    """ Get BTC/USDT ticker info.
 
     Args:
 
@@ -944,3 +951,4 @@ def start_API():
 #----------------------------------------------------------------------------
 if __name__ == '__main__':
     print("DataManager in script mode.")
+    start_API()
