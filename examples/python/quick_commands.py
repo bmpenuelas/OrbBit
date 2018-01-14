@@ -34,12 +34,12 @@ close = [ row['ohlcv']['close'] for row in ohlcv]
 plt.plot(date8061, close)
 
 #%% Get EMA
-jsonreq = {'res':'ema', 'params':{'symbol':'BTC/USDT','timeframe':'1m', 'ema_samples': 12}}
+jsonreq = {'res':'ema', 'params':{'symbol':'BTC/USDT','timeframe':'5m', 'ema_samples': 12}}
 r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/get/', json=jsonreq)
 ema_dict_a = r.json()
 print(len(ema_dict_a))
 
-jsonreq = {'res':'ema', 'params':{'symbol':'BTC/USDT','timeframe':'1m', 'ema_samples': 5}}
+jsonreq = {'res':'ema', 'params':{'symbol':'BTC/USDT','timeframe':'5m', 'ema_samples': 5}}
 r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/get/', json=jsonreq)
 ema_dict_b = r.json()
 print(len(ema_dict_b))

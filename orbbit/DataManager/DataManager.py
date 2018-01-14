@@ -16,9 +16,36 @@ import json
 
 from   orbbit.DataManager.data_transform.data_transform import *
 
+
+#%%##########################################################################
+#                               CONFIGURATION                               #
+#############################################################################
+
 #%%--------------------------------------------------------------------------
-# EXCHANGES SETUP
+# NETWORK
 #----------------------------------------------------------------------------
+
+serverName = socket.gethostname()
+print('ORBBIT DataManager Server Name:' + serverName)
+
+# ORBBIT_HOST = socket.gethostbyname( 'localhost' )
+ORBBIT_HOST = socket.gethostbyname(serverName)
+print('ORBBIT DataManager on IP ' + ORBBIT_HOST)
+
+
+# API
+DATAMANAGER_API_IP = '0.0.0.0'
+DATAMANAGER_API_PORT = 5000
+
+# Subscriptions
+SUBS_PORT_BASE = 5100
+SUBS_PORT_LIMIT = 6000
+
+
+
+#%%##########################################################################
+#                              EXCHANGES SETUP                              #
+#############################################################################
 
 #\todo Check exchange.hasFetchOHLCV
 exchange = ccxt.hitbtc2({'verbose': False})
@@ -38,9 +65,10 @@ def fetch_ticker():
     return exchange.fetch_ticker(symbol_os('BTC/USDT'))
 
 
-#%%--------------------------------------------------------------------------
-# DATABASE SETUP
-#----------------------------------------------------------------------------
+
+#%%##########################################################################
+#                              DATABASE SETUP                               #
+#############################################################################
 
 def get_datamanager_info(info):
     """Get the 'info' field from the 'datamanager_info' collection at the db.
@@ -113,9 +141,10 @@ def get_db_ohlcv(symbol, timeframe, from_millis, to_millis):
 
 
 
-#%%--------------------------------------------------------------------------
-# Generic functions
-#----------------------------------------------------------------------------
+
+#%%##########################################################################
+#                             GENERIC FUNCTIONS                             #
+#############################################################################
 
 def current_millis():
     return time.time() * 1000
@@ -719,16 +748,6 @@ valid_subscribtion_resources = {'fetched': ['ohlcv',],
 
 SUBS_CLIENTS_WAITING_MAX = 10
 
-serverName = socket.gethostname() #Get the server name
-print('ORBBIT Server Name:' + serverName)
-
-# ORBBIT_HOST = socket.gethostbyname( 'localhost' )
-ORBBIT_HOST = socket.gethostbyname(serverName) #Get server IP
-print('ORBBIT on IP ' + ORBBIT_HOST)
-
-SUBS_PORT_BASE = 5100
-SUBS_PORT_LIMIT = 6000
-
 active_subscription_services = {} #dict {'stream_id_a': (HOST, PORT), 'stream_id_b': [(...
 
 transform_data_threads = []
@@ -933,7 +952,7 @@ class DataManager_API (threading.Thread):
 
     def run(self):
         print('DataManager_API STARTED with threadID ' + self.name)
-        app.run(host="0.0.0.0", port=5000, debug=False)
+        app.run(host=DATAMANAGER_API_IP, port=DATAMANAGER_API_PORT, debug=False)
         print('DataManager_API STOPPED with threadID ' + self.name)
 
 
