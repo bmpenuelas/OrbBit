@@ -33,41 +33,61 @@ bot_token_route = resource_filename('orbbit', 'UserInterface/telegram_bot/bot_to
 with open(bot_token_route) as f:
     bot_token_key = json.load(f)
 
-updater = Updater(token = bot_token_key['token'])
-dispatcher = updater.dispatcher
-job_queue = updater.job_queue
+updater = []
+dispatcher = []
+job_queue = []
+
+def init_bot():
+    global updater
+    global dispatcher
+    global job_queue
+
+    updater = Updater(token = bot_token_key['token'])
+    dispatcher = updater.dispatcher
+    job_queue = updater.job_queue
+
 
 
 #############################################################################
-#                               BOT COMMANDS                                #
+#                             EXAMPLE HANDLERS                              #
 #############################################################################
 
 def foo():
     print("FOO")
 
 
-def start(bot, update):
+def command_start(bot, update):
     bot.send_message(chat_id=update.message.chat_id, text="Dame amorsito.")
 
-start_handler = CommandHandler('start', start)
-dispatcher.add_handler(start_handler)
+def add_start_handler():
+    start_handler = CommandHandler('start', command_start)
+    dispatcher.add_handler(start_handler)
+
 
 
 def echo(bot, update):
     bot.send_message(chat_id=update.message.chat_id, text=update.message.text)
 
-echo_handler = MessageHandler(Filters.text, echo)
-dispatcher.add_handler(echo_handler)
+def add_echo_handler():
+    echo_handler = MessageHandler(Filters.text, echo)
+    dispatcher.add_handler(echo_handler)
+
 
 
 def caps(bot, update, args):
     text_caps = ' '.join(args).upper()
     bot.send_message(chat_id=update.message.chat_id, text=text_caps)
 
-caps_handler = CommandHandler('caps', caps, pass_args=True)
-dispatcher.add_handler(caps_handler)
+def add_caps_handler():
+    caps_handler = CommandHandler('caps', caps, pass_args=True)
+    dispatcher.add_handler(caps_handler)
 
 
+
+
+#############################################################################
+#                               BOT COMMANDS                                #
+#############################################################################
 
 def command_alert_macd(bot, update, args):
     text = 'Starting MACD cross monitoring with params: '
@@ -90,8 +110,10 @@ def command_alert_macd(bot, update, args):
     new_macd_thread.start()
 
 
-start_handler = CommandHandler('macd_alert', command_alert_macd, pass_args=True)
-dispatcher.add_handler(start_handler)
+def add_command_alert_macd_handler():
+    command_alert_macd_handler = CommandHandler('macd_alert', command_alert_macd, pass_args=True)
+    dispatcher.add_handler(command_alert_macd_handler)
+
 
 
 class alert_macd(threading.Thread):
@@ -107,7 +129,7 @@ class alert_macd(threading.Thread):
         self.user_requesting = user_requesting
         self.params = params
 
-        
+
         #%% request subscription
         jsonreq = {'res':'macd', 'params':params}
         r = requests.get('http://' + LOCAL_HOST + ':5000/datamanager/subscribe/add', json=jsonreq)
@@ -131,10 +153,6 @@ class alert_macd(threading.Thread):
     def run(self):
 
         #%% get new data as soon as it is generated
-        date8061 = []
-        ema_fast = []
-        ema_slow = []
-
         while 1:
             reply = self.subscription_socket.recv(4096) # waits here until new data is received
             reply_dict = json.loads(reply.decode('ascii')) # turn string into data structure
@@ -156,10 +174,29 @@ def macd_message(bot, user, symbol, timeframe, buy_sell, price):
                     )
 
 
+
+
+#%%--------------------------------------------------------------------------
+# ADD ALL HANDLERS
+#----------------------------------------------------------------------------
+
+
+def add_all_handlers():
+    add_start_handler()
+    add_echo_handler()
+    add_caps_handler()
+    add_command_alert_macd_handler()
+
+
+
+
 #%%##########################################################################
 #                                 START BOT                                 #
 #############################################################################
-updater.start_polling()
+def start():
+    init_bot()
+    add_all_handlers()
+    updater.start_polling()
 
 
 #%%##########################################################################

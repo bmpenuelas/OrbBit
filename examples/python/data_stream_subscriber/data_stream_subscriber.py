@@ -4,8 +4,6 @@
 #   1- Tell the API which data stream you want to subscribe to.
 #   2- Listen for new data timely delivered in the returned IP, PORT
 
-# sudo python3
-
 import orbbit as orb
 
 import socket
