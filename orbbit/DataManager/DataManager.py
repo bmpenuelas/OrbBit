@@ -2,6 +2,7 @@
 
 import sys
 import os
+import math
 from   pkg_resources  import resource_filename
 import time
 import threading
@@ -73,11 +74,11 @@ def get_datamanager_info(info):
         # if the database is empty, use these config by default
         new_documents = [
             {'fetching_symbols':
-                {'hitbtc':  {'BTC/USDT': ['1m', '5m', '30m', '1h', '1d',],
-                             'ETH/USDT': ['1m', '5m', '30m', '1h', '1d',],
+                {'hitbtc':  {'BTC/USDT': ['1m',],# '5m', '30m', '1h', '1d',],
+                             #'ETH/USDT': ['1m',], '5m', '30m', '1h', '1d',],
                             },
-                 'bittrex': {'BTC/USDT': ['1m', '5m', '30m', '1h', '1d',],
-                             'ETH/USDT': ['1m', '5m', '30m', '1h', '1d',],
+                 'bittrex': {'BTC/USDT': ['1m',],# '5m', '30m', '1h', '1d',],
+                             #'ETH/USDT': ['1m',], '5m', '30m', '1h', '1d',],
                             },
                 }
             },
@@ -138,7 +139,7 @@ def get_db_ohlcv(symbol, exchange, timeframe, from_millis, to_millis):
              'date8061': {'$gt': from_millis, '$lt': to_millis}
             }
 
-    # print(len(cursor_to_list(collection.find(query, projection).sort('date8061', pymongo.ASCENDING))))
+    print(len(cursor_to_list(collection.find(query, projection).sort('date8061', pymongo.ASCENDING))))
     return collection.find(query, projection).sort('date8061', pymongo.ASCENDING)
 
 
@@ -225,9 +226,9 @@ def timeframe_to_millis(timeframe):
     Returns:
     """
     if   'M' in timeframe:
-        return int(timeframe.replace('d', '')) * 30 * 24 * 60 * 60 * 1000
+        return int(timeframe.replace('M', '')) * 30 * 24 * 60 * 60 * 1000
     elif 'w' in timeframe:
-        return int(timeframe.replace('d', '')) * 7  * 24 * 60 * 60 * 1000
+        return int(timeframe.replace('w', '')) * 7  * 24 * 60 * 60 * 1000
     elif 'd' in timeframe:
         return int(timeframe.replace('d', '')) * 24 * 60 * 60 * 1000
     elif 'h' in timeframe:
@@ -351,12 +352,18 @@ class fetch_thread_ohlcv(threading.Thread):
     def run(self):
         # print('Started fetcher for ' + self.params['symbol'] + ' ' + self.params['timeframe'])
 
+        # first, try to fill missing data
         now = current_millis()
         nxt_fetch = now - (now % timeframe_to_millis(self.params['timeframe']))
 
-        filled = fill_ohlcv(self.params['symbol'], self.params['exchange'], self.params['timeframe'], ccxt.Exchange.parse8601('2017-01-01 00:00:00'))
+        data_limit = 1000
+        fill_from = now - timeframe_to_millis(self.params['timeframe']) * data_limit
+
+        filled = fill_ohlcv(self.params['symbol'], self.params['exchange'], self.params['timeframe'], fill_from)
         if filled: print('Filled ' + str(filled) + ' missing entries in ' + self.params['symbol'] +' @ '+ self.params['exchange'] +' '+ self.params['timeframe'])
 
+
+        # keep asking for candles
         while 1:
             fetch_from_API_success = 0
             while not(fetch_from_API_success):
@@ -407,31 +414,43 @@ def fill_ohlcv(symbol, exchange_id, timeframe, from_millis=0):
         filled: gaps successfully filled.
         missing: gaps that could not be filled.
     """
+
+    data_limit = 1000
+    retry_on_xchng_err_interval = 1
+
     exchange = exchanges[exchange_id]
 
     symbol_db = symbol.replace('/', '_')
     collection_name = exchange_id + '_' + symbol_db
     collection = datamanager_db[collection_name]
 
-    retry_on_xchng_err_interval = 1
+
+    # calculate number of requests needed
+    fill_parts = math.ceil(((current_millis() - from_millis) / timeframe_to_millis(timeframe)) / data_limit)
+
+    from_parts = [from_millis + i * data_limit for i in range(fill_parts)]
+
 
     filled = 0
-    fetch_from_API_success = 0
-    while not fetch_from_API_success:
-        try:
-            # print('Filling ' + symbol +' '+ timeframe)
-            ohlcv = exchange.fetch_ohlcv(symbol_os(exchange_id, symbol), timeframe, since=from_millis, limit=1000)
-            fetch_from_API_success = 1
-        except:
-            print('ERR Exchange - Fill OHLCV ' + symbol + ' @ ' + exchange_id + ' ' + timeframe)
-            time.sleep(retry_on_xchng_err_interval)
 
-    new_documents = [candle_to_document(candle, timeframe) for candle in ohlcv]
-    try:
-        insertion_result = collection.insert_many(new_documents, ordered = False )
-        filled = len(insertion_result.inserted_ids)
-    except pymongo.errors.BulkWriteError as ex:
-        filled = ex.details['nInserted']
+    for from_part in from_parts:
+        fetch_from_API_success = 0
+        while not fetch_from_API_success:
+            try:
+                # print('Filling ' + symbol + ' ' + timeframe + ' from ' + str(from_part))
+                ohlcv = exchange.fetch_ohlcv(symbol_os(exchange_id, symbol), timeframe, since=from_part, limit=data_limit)
+                fetch_from_API_success = 1
+            except:
+                print('ERR Exchange - Fill OHLCV ' + symbol + ' @ ' + exchange_id + ' ' + timeframe)
+                time.sleep(retry_on_xchng_err_interval)
+
+        new_documents = [candle_to_document(candle, timeframe) for candle in ohlcv]
+        try:
+            insertion_result = collection.insert_many(new_documents, ordered = False )
+            filled += len(insertion_result.inserted_ids)
+        except pymongo.errors.BulkWriteError as ex:
+            filled += ex.details['nInserted']
+
     # \todo chech for holes in data
     return filled
 
@@ -481,7 +500,7 @@ class transform_thread_macd(threading.Thread):
 
     def run(self):
         # get enough previous values to calculate each EMA
-        from_millis = current_millis() - (self.ema_slow + 3) * timeframe_to_millis(self.timeframe)
+        from_millis = current_millis() - (self.ema_slow + 6) * timeframe_to_millis(self.timeframe)
         to_millis = current_millis() + 10e3
 
         ohlcv_cursor = get_db_ohlcv(self.symbol, self.exchange, self.timeframe, int(from_millis), int(to_millis))

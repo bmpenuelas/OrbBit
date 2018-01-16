@@ -17,11 +17,6 @@ r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/fetch/start')
 print(r.json())
 time.sleep(10)
 
-#%% request subscription
-jsonreq = {'res':'ohlcv', 'params':{'symbol':'BTC/USDT', 'exchange': 'bittrex', 'timeframe':'5m'}}
-r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/subscribe/add', json=jsonreq)
-subs = r.json()
-
 #%% Get OHLCV
 jsonreq = {'res':'ohlcv', 'params':{'symbol':'BTC/USDT', 'exchange': 'bittrex', 'timeframe':'1m'}}
 r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/get/', json=jsonreq)
@@ -38,6 +33,11 @@ print(len(ohlcv))
 date8061 = [ row['date8061'] for row in ohlcv]
 close = [ row['ohlcv']['close'] for row in ohlcv]
 plt.plot(date8061, close)
+
+#%% request subscription
+jsonreq = {'res':'ohlcv', 'params':{'symbol':'BTC/USDT', 'exchange': 'bittrex', 'timeframe':'5m'}}
+r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/subscribe/add', json=jsonreq)
+subs = r.json()
 
 #%% Get EMA
 jsonreq = {'res':'ema', 'params':{'symbol':'BTC/USDT', 'exchange': 'bittrex', 'timeframe':'5m', 'ema_samples': 12}}
