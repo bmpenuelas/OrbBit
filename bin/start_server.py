@@ -22,8 +22,8 @@ orb.UI.telegram_bot.start()
 
 
 # Start fetching data from the exchanges 
-serverName = socket.gethostname()
-ORBBIT_HOST = socket.gethostbyname(serverName)
+time.sleep(5)
+ORBBIT_HOST = socket.gethostbyname('localhost')
 
 r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/fetch/start')
 print(r.json())

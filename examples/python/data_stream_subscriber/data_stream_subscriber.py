@@ -14,8 +14,8 @@ import time
 import matplotlib.pyplot as plt
 
 
-# ORBBIT_HOST = socket.gethostbyname( 'localhost' )
-ORBBIT_HOST = '172.31.31.52'
+ORBBIT_HOST = socket.gethostbyname( 'localhost' )
+#ORBBIT_HOST = '172.31.31.52'
 
 #%% Start DataManager
 orb.DM.start_API()
@@ -26,7 +26,7 @@ r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/fetch/start')
 time.sleep(5)
 
 #%% request subscription
-jsonreq = {'res':'macd', 'params':{'symbol':'BTC/USDT', 'timeframe':'1m', 'ema_fast': 5, 'ema_slow': 12}}
+jsonreq = {'res':'macd', 'params':{'symbol':'BTC/USDT', 'exchange': 'bittrex', 'timeframe':'1m', 'ema_fast': 5, 'ema_slow': 12}}
 r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/subscribe/add', json=jsonreq)
 response_dict = r.json()
 print(response_dict)
