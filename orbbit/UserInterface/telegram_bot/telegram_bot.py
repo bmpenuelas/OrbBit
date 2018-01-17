@@ -29,7 +29,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 #                                   INIT                                    #
 #############################################################################
 
-bot_token_route = resource_filename('orbbit', 'UserInterface/telegram_bot/bot_token.key')
+bot_token_route = resource_filename('orbbit', 'UserInterface/telegram_bot/keys/bot_token.key')
 with open(bot_token_route) as f:
     bot_token_key = json.load(f)
 

@@ -3,7 +3,6 @@
 import sys
 import os
 import math
-from   pkg_resources  import resource_filename
 import time
 import threading
 import queue
@@ -15,6 +14,7 @@ import ccxt
 import pymongo
 import json
 
+from   orbbit.common.common import *
 from   orbbit.DataManager.data_transform.data_transform import *
 
 
@@ -49,65 +49,10 @@ SUBS_PORT_LIMIT = 6000
 #                              DATABASE SETUP                               #
 #############################################################################
 
-def get_datamanager_info(info):
-    """Get the 'info' field from the 'datamanager_info' collection at the db.
+datamanager_db = database_connection('datamanager')
+datamanager_info = database_info_connection(datamanager_db)
 
-    It stores parameters that should be kept between runs of the program.
-
-    Args:
-        info (str): info field identifier.
-            Valid identifiers:
-                'fetching_symbols' dict key : PAIR
-                                   dict val : list TIMEFRAME
-
-    Returns:
-        Structure stored under 'info'. Can be any data structure.
-
-    Note:
-        To delete all database contents use the following command. Use with caution!
-        datamanager_db_connection.drop_database(datamanager_db_key['database'])
-    """
-
-    try:
-        return datamanager_info.find( {info: {'$exists': True}} )[0][info]
-    except IndexError:
-        # if the database is empty, use these config by default
-        new_documents = [
-            {'fetching_symbols':
-                {'hitbtc':  {'BTC/USDT': ['1m',],# '5m', '30m', '1h', '1d',],
-                             #'ETH/USDT': ['1m',], '5m', '30m', '1h', '1d',],
-                            },
-                 'bittrex': {'BTC/USDT': ['1m',],# '5m', '30m', '1h', '1d',],
-                             #'ETH/USDT': ['1m',], '5m', '30m', '1h', '1d',],
-                            },
-                }
-            },
-            {'using_exchanges':
-                ['hitbtc', 'bittrex', 'binance', 'kraken']
-            },
-        ]
-        datamanager_info.insert_many(new_documents, ordered = False )
-        return datamanager_info.find( {info: {'$exists': True}} )[0][info]
-
-
-
-def update_datamanager_info(key, value):
-    datamanager_info.update_one( {key: {'$exists': True}}, {"$set": {key: value, }}, upsert=True )
-
-
-
-
-datamanager_db_route = resource_filename('orbbit', 'DataManager/datamanager_db.key')
-
-with open(datamanager_db_route) as f:
-    datamanager_db_key = json.load(f)
-
-datamanager_db_connection = pymongo.MongoClient(datamanager_db_key['url'], datamanager_db_key['port'])
-datamanager_db = datamanager_db_connection[datamanager_db_key['database']]
-datamanager_db.authenticate(datamanager_db_key['user'], datamanager_db_key['password'])
-
-datamanager_info = datamanager_db['datamanager_info']
-fetching_symbols = get_datamanager_info('fetching_symbols')
+fetching_symbols = get_database_info('datamanager', 'fetching_symbols')
 
 
 
@@ -149,53 +94,9 @@ def get_db_ohlcv(symbol, exchange, timeframe, from_millis, to_millis):
 #                              EXCHANGES SETUP                              #
 #############################################################################
 
-def add_exchange(exchange_id):
-#\todo Check exchange.hasFetchOHLCV
-    global using_exchanges
-    using_exchanges = get_datamanager_info('using_exchanges')
-    if not exchange_id in using_exchanges:
-        using_exchanges.append(exchange_id)
-    update_datamanager_info('using_exchanges', using_exchanges)
-    new_exchange = exchange_id_to_exchange(exchange_id)
-    if new_exchange != -1:
-        exchanges[exchange_id] = new_exchange
-    else:
-        return -1
+fetch_exchanges = get_database_info('datamanager', 'fetch_exchanges')
 
-
-
-def exchange_id_to_exchange(exchange_id):
-    if exchange_id == 'hitbtc':
-        return ccxt.hitbtc2({'verbose': False})
-    if exchange_id == 'bittrex':
-        return ccxt.bittrex({'verbose': False})
-    if exchange_id == 'binance':
-        return ccxt.binance({'verbose': False})
-    if exchange_id == 'kraken':
-        return ccxt.kraken({'verbose': False})
-    else:
-        return -1
-
-
-
-using_exchanges = get_datamanager_info('using_exchanges')
-
-exchanges = {new_exchange: exchange_id_to_exchange(new_exchange) for new_exchange in using_exchanges}
-
-
-def print_markets(exchange_id):
-    exchange = exchanges[exchange_id]
-
-    markets = exchange.load_markets()
-    print(exchange.id, markets)
-
-
-def symbol_os(exchange_id, symbol):
-    if exchange_id == 'hitbtc' and os.name == 'nt':
-        return symbol.replace('/USDT', '/USD')
-    else:
-        return symbol
-
+exchanges = {new_exchange: exchange_id_to_exchange(new_exchange) for new_exchange in fetch_exchanges}
 
 
 
@@ -307,7 +208,7 @@ def start_fetch():
       List of symbols that are being fetched.
 
     """
-    fetching_symbols = get_datamanager_info('fetching_symbols')
+    fetching_symbols = get_database_info('datamanager', 'fetching_symbols')
     for exchange in fetching_symbols:
         for symbol in fetching_symbols[exchange]:
             for timeframe in fetching_symbols[exchange][symbol]:
@@ -315,7 +216,7 @@ def start_fetch():
                 new_fetch_thread_ohlcv = fetch_thread_ohlcv(params)
                 new_fetch_thread_ohlcv.start()
 
-    return jsonify({'fetching_symbols': get_datamanager_info('fetching_symbols')})
+    return jsonify({'fetching_symbols': get_database_info('datamanager', 'fetching_symbols')})
 
 
 
@@ -403,10 +304,10 @@ def fill_ohlcv(symbol, exchange_id, timeframe, from_millis=0):
         It is limited by how back in time the exchange API provides data.
 
     Example:
-        symbol = 'ETH/USDT'
-        exchange_id = 'bittrex'
+        symbol = 'BTC/USDT'
+        exchange_id = 'hitbtc'
         timeframe = '1m'
-        from_millis = ccxt.Exchange.parse8601('2017-01-24 00:00:00')
+        from_millis = current_millis() - timeframe_to_millis(timeframe) * 1000
         fill_ohlcv(symbol, exchange_id, timeframe, from_millis)
     Args:
         symbol, timeframe, from_millis: See fetch_thread_ohlcv.
@@ -623,7 +524,7 @@ def datamanager_status():
         Status of the DataManager API and processes.
     """
 
-    return jsonify({'fetching_symbols': get_datamanager_info('fetching_symbols')})
+    return jsonify({'fetching_symbols': get_database_info('datamanager', 'fetching_symbols')})
 
 
 
@@ -633,7 +534,7 @@ def datamanager_status():
 
 @app.route('/datamanager/fetch', methods=['GET'])
 def fetch():
-    return jsonify({'fetching_symbols': get_datamanager_info('fetching_symbols')})
+    return jsonify({'fetching_symbols': get_database_info('datamanager', 'fetching_symbols')})
 
 
 #----------------------------------------------------------------------------
@@ -665,7 +566,7 @@ def fetch_commands(command):
         symbol = params['symbol']
         timeframe = params['timeframe']
 
-        fetching_symbols = get_datamanager_info('fetching_symbols')
+        fetching_symbols = get_database_info('datamanager', 'fetching_symbols')
 
 
         is_new = 1
@@ -682,7 +583,7 @@ def fetch_commands(command):
 
         if is_new:
             fetching_symbols[symbol].append(timeframe)
-            update_datamanager_info('fetching_symbols', fetching_symbols)
+            update_database_info('datamanager', 'fetching_symbols', fetching_symbols)
             new_symbol_fetcher = fetch_thread_ohlcv(params)
             new_symbol_fetcher.start()
 
@@ -715,7 +616,7 @@ def get():
 
     # \todo List of available data, fetched and processed
 
-    return jsonify({'fetching_symbols': get_datamanager_info('fetching_symbols')})
+    return jsonify({'fetching_symbols': get_database_info('datamanager', 'fetching_symbols')})
 
 
 #----------------------------------------------------------------------------

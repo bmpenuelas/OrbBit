@@ -1,7 +1,6 @@
 #!/usr/bin/python3
 
 import sys
-from   pkg_resources  import resource_filename
 import time
 import threading
 import queue
@@ -13,7 +12,7 @@ import ccxt
 import pymongo
 import json
 
-# from   orbbit.OrderManager.data_transform.data_transform import *
+from   orbbit.common.common import *
 
 
 
@@ -31,8 +30,22 @@ ORDERMANAGER_API_PORT = 5001
 
 
 
+
 #%%##########################################################################
-#                              ordermanager API                              #
+#                              DATABASE SETUP                               #
+#############################################################################
+
+ordermanager_db = database_connection('ordermanager')
+ordermanager_info = database_info_connection(ordermanager_db)
+
+
+
+
+
+
+
+#%%##########################################################################
+#                              ORDERMANAGER API                              #
 #############################################################################
 
 #----------------------------------------------------------------------------
