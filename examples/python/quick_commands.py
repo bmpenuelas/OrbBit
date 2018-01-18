@@ -11,21 +11,28 @@ import matplotlib.pyplot as plt
 import socket
 
 ORBBIT_HOST = socket.gethostbyname( 'localhost' )
+DATAMANAGERPORT = ':5000'
+ORDERMANAGERPORT = ':5001'
+
+#%%
+r = requests.get('http://' + ORBBIT_HOST + ORDERMANAGERPORT + '/ordermanager')
+print(r.json())
+time.sleep(10)
 
 #%% Start fetchers
-r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/fetch/start')
+r = requests.get('http://' + ORBBIT_HOST + DATAMANAGERPORT + '/datamanager/fetch/start')
 print(r.json())
 time.sleep(10)
 
 #%% Get OHLCV
 jsonreq = {'res':'ohlcv', 'params':{'symbol':'BTC/USDT', 'exchange': 'bittrex', 'timeframe':'1m'}}
-r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/get/', json=jsonreq)
+r = requests.get('http://' + ORBBIT_HOST + DATAMANAGERPORT + '/datamanager/get/', json=jsonreq)
 ohlcv = r.json()
 print(len(ohlcv))
 
 #%% Get OHLCV
 jsonreq = {'res':'ohlcv', 'params':{'symbol':'BTC/USDT', 'exchange': 'hitbtc', 'timeframe':'1m'}}
-r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/get/', json=jsonreq)
+r = requests.get('http://' + ORBBIT_HOST + DATAMANAGERPORT + '/datamanager/get/', json=jsonreq)
 ohlcv = r.json()
 print(len(ohlcv))
 
@@ -36,17 +43,17 @@ plt.plot(date8061, close)
 
 #%% request subscription
 jsonreq = {'res':'ohlcv', 'params':{'symbol':'BTC/USDT', 'exchange': 'bittrex', 'timeframe':'5m'}}
-r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/subscribe/add', json=jsonreq)
+r = requests.get('http://' + ORBBIT_HOST + DATAMANAGERPORT + '/datamanager/subscribe/add', json=jsonreq)
 subs = r.json()
 
 #%% Get EMA
 jsonreq = {'res':'ema', 'params':{'symbol':'BTC/USDT', 'exchange': 'bittrex', 'timeframe':'5m', 'ema_samples': 12}}
-r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/get/', json=jsonreq)
+r = requests.get('http://' + ORBBIT_HOST + DATAMANAGERPORT + '/datamanager/get/', json=jsonreq)
 ema_dict_a = r.json()
 print(len(ema_dict_a))
 
 jsonreq = {'res':'ema', 'params':{'symbol':'BTC/USDT', 'exchange': 'bittrex', 'timeframe':'5m', 'ema_samples': 5}}
-r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/get/', json=jsonreq)
+r = requests.get('http://' + ORBBIT_HOST + DATAMANAGERPORT + '/datamanager/get/', json=jsonreq)
 ema_dict_b = r.json()
 print(len(ema_dict_b))
 
@@ -63,11 +70,11 @@ with open('./save.json', 'w') as f:
 
 #%% Add pair
 jsonreq = {'res':'ohlcv', 'params':{'symbol':'BTG/USDT', 'exchange': 'bittrex', 'timeframe':'5m'}}
-r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/fetch/add', json=jsonreq)
+r = requests.get('http://' + ORBBIT_HOST + DATAMANAGERPORT + '/datamanager/fetch/add', json=jsonreq)
 print(r.json())
 
 #%% DataManager status
-r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager')
+r = requests.get('http://' + ORBBIT_HOST + DATAMANAGERPORT + '/datamanager')
 print(r.json())
 
 #%% Start spyder (cli)

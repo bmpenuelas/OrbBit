@@ -154,11 +154,31 @@ def exchange_id_to_exchange(exchange_id):
     else:
         return -1
 
+def exchange_id_to_user_exchange(exchange_id, user):
+    exchanges_key = dict_from_key('OrderManager/keys/exchanges.key')
 
-
-# fetch_exchanges = get_database_info(datamanager_info, 'fetch_exchanges')
-
-# exchanges = {new_exchange: exchange_id_to_exchange(new_exchange) for new_exchange in fetch_exchanges}
+    if exchange_id == 'hitbtc':
+        return ccxt.hitbtc2({   'verbose': False,
+                                'apiKey': exchanges_key[user][exchange_id]['key'], 
+                                'secret': exchanges_key[user][exchange_id]['secret']
+                            })
+    if exchange_id == 'bittrex':
+        return ccxt.bittrex({   'verbose': False,
+                                'apiKey': exchanges_key[user][exchange_id]['key'], 
+                                'secret': exchanges_key[user][exchange_id]['secret']
+                            })
+    if exchange_id == 'binance':
+        return ccxt.binance({   'verbose': False,
+                                'apiKey': exchanges_key[user][exchange_id]['key'], 
+                                'secret': exchanges_key[user][exchange_id]['secret']
+                            })
+    if exchange_id == 'kraken':
+        return ccxt.kraken( {   'verbose': False,
+                                'apiKey': exchanges_key[user][exchange_id]['key'], 
+                                'secret': exchanges_key[user][exchange_id]['secret']
+                            })
+    else:
+        return -1
 
 
 def symbol_os(exchange_id, symbol):

@@ -36,10 +36,19 @@ ORDERMANAGER_API_PORT = 5001
 #############################################################################
 
 ordermanager_db = database_connection('ordermanager')
-ordermanager_info = database_info_connection(ordermanager_db)
 
 
 
+
+#%%##########################################################################
+#                              EXCHANGES SETUP                              #
+#############################################################################
+
+user_info = get_database_info('ordermanager', 'user_info')
+
+user_exchanges = {}
+for user in user_info:
+    user_exchanges[user] = {exchange: exchange_id_to_user_exchange(exchange, user) for exchange in user_info[user]['exchanges']}
 
 
 

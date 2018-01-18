@@ -50,7 +50,6 @@ SUBS_PORT_LIMIT = 6000
 #############################################################################
 
 datamanager_db = database_connection('datamanager')
-datamanager_info = database_info_connection(datamanager_db)
 
 fetching_symbols = get_database_info('datamanager', 'fetching_symbols')
 
