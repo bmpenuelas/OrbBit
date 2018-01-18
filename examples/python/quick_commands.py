@@ -14,6 +14,12 @@ ORBBIT_HOST = socket.gethostbyname( 'localhost' )
 DATAMANAGERPORT = ':5000'
 ORDERMANAGERPORT = ':5001'
 
+#%% get balance
+jsonreq = {'res':'balance', 'params':{'user':'farolillo', 'exchange': 'hitbtc'}}
+r = requests.get('http://' + ORBBIT_HOST + ORDERMANAGERPORT + '/ordermanager/get/', json=jsonreq)
+print(r.json())
+time.sleep(10)
+
 #%% get trade hist
 jsonreq = {'res':'trade_history', 'params':{'user':'farolillo', 'exchange': 'hitbtc'}}
 r = requests.get('http://' + ORBBIT_HOST + ORDERMANAGERPORT + '/ordermanager/get/', json=jsonreq)

@@ -155,14 +155,25 @@ def get_commands():
     get_parameters = request.json['params']
 
 
-    # Resource 'ohlcv'
-    if get_resource == 'trade_history':
+    # Resource 'balance'
+    if get_resource == 'balance':
+        user = get_parameters['user']
+        exchange = get_parameters['exchange']
+
+        balance = user_exchanges[user][exchange].fetchBalance()
+
+        return jsonify({'balance': balance})
+
+
+    # Resource 'trade_history'
+    elif get_resource == 'trade_history':
         user = get_parameters['user']
         exchange = get_parameters['exchange']
 
         trade_history = user_exchanges[user][exchange].fetchMyTrades(limit=1000)
 
         return jsonify({'trade_history': trade_history})
+        
 
     else:
         return jsonify({'error': 'Resource not found.'})
