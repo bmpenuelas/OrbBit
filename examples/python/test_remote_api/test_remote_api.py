@@ -1,13 +1,13 @@
 #!/usr/bin/python3
 
 import requests
-import time
-import ccxt
-import matplotlib.pyplot as plt
-import socket
 
-ORBBIT_HOST = 'orbbit.hopto.org'
+#ORBBIT_HOST = 'orbbit.hopto.org'
+#ORBBIT_HOST = socket.gethostbyname( 'localhost' )
+ORBBIT_HOST = '127.0.0.1'
+DATAMANAGERPORT = ':5000'
+ORDERMANAGERPORT = ':5001'
 
 #%% DataManager status
-r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager')
+r = requests.get('http://' + ORBBIT_HOST + DATAMANAGERPORT + '/datamanager')
 print(r.json())

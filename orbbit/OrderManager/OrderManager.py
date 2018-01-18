@@ -160,7 +160,10 @@ def get_commands():
         user = get_parameters['user']
         exchange = get_parameters['exchange']
 
-        balance = user_exchanges[user][exchange].fetchBalance()
+        api_balance = user_exchanges[user][exchange].fetchBalance()
+        totals = api_balance['total']
+
+        balance = {coin:totals[coin] for coin in totals if totals[coin] > 0.0 }
 
         return jsonify({'balance': balance})
 
@@ -170,9 +173,14 @@ def get_commands():
         user = get_parameters['user']
         exchange = get_parameters['exchange']
 
-        trade_history = user_exchanges[user][exchange].fetchMyTrades(limit=1000)
+        trade_history_api = user_exchanges[user][exchange].fetchMyTrades(limit=1000)
 
-        return jsonify({'trade_history': trade_history})
+        #trade_history_coin = {}
+        #for trade in trade_history_api:
+        #    trade_history_coin[read_symbol_os(exchange, trade[symbol])] = trade[symbol]
+
+
+        return jsonify({'trade_history': trade_history_api})
         
 
     else:

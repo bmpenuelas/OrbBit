@@ -189,3 +189,8 @@ def symbol_os(exchange_id, symbol):
 
 
 
+def read_symbol_os(exchange_id, symbol):
+    if exchange_id == 'hitbtc' and os.name == 'nt':
+        return symbol.replace('/USD', '/USDT')
+    else:
+        return symbol

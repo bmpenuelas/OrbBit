@@ -17,13 +17,15 @@ ORDERMANAGERPORT = ':5001'
 #%% get balance
 jsonreq = {'res':'balance', 'params':{'user':'farolillo', 'exchange': 'hitbtc'}}
 r = requests.get('http://' + ORBBIT_HOST + ORDERMANAGERPORT + '/ordermanager/get/', json=jsonreq)
-print(r.json())
+bal = r.json()
+print(bal)
 time.sleep(10)
 
 #%% get trade hist
 jsonreq = {'res':'trade_history', 'params':{'user':'farolillo', 'exchange': 'hitbtc'}}
 r = requests.get('http://' + ORBBIT_HOST + ORDERMANAGERPORT + '/ordermanager/get/', json=jsonreq)
-print(r.json())
+trade_history = r.json()
+print(trade_history)
 time.sleep(10)
 
 #%% Start fetchers
