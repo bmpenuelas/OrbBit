@@ -111,7 +111,62 @@ def ordermanager_status():
         Status of the OrderManager API and processes.
     """
 
-    return jsonify({'a': 'aaaaa'})
+    return jsonify({'status': 'aaaaa'})
+
+
+
+#----------------------------------------------------------------------------
+#   Route /datamanager/get
+#----------------------------------------------------------------------------
+
+@app.route('/datamanager/get', methods=['GET'])
+def get():
+    """ List DataManager available data.
+
+    Trhough 'get', you can retrieve sets of past data stored in the database.
+    To receive the latest data see '/datamanager/subscribe'
+
+    Args:
+
+    Returns:
+      Available OHLCV symbols and timeframes.
+    """
+
+    # \todo List of available data, fetched and processed
+
+    return jsonify({'valid_resources': ['trade_history']})
+
+
+
+#----------------------------------------------------------------------------
+#   Route /ordermanager/get/<command>
+#----------------------------------------------------------------------------
+
+@app.route('/ordermanager/get/', methods=['GET'])
+def get_commands():
+    """ Serve data collected by the OrderManager block.
+
+    Args:
+
+    Returns:
+        Requested data.
+    """
+    get_resource = request.json['res']
+    get_parameters = request.json['params']
+
+
+    # Resource 'ohlcv'
+    if get_resource == 'trade_history':
+        user = get_parameters['user']
+        exchange = get_parameters['exchange']
+
+        trade_history = user_exchanges[user][exchange].fetchMyTrades(limit=1000)
+
+        return jsonify({'trade_history': trade_history})
+
+    else:
+        return jsonify({'error': 'Resource not found.'})
+
 
 
 

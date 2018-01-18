@@ -615,7 +615,7 @@ def get():
 
     # \todo List of available data, fetched and processed
 
-    return jsonify({'fetching_symbols': get_database_info('datamanager', 'fetching_symbols')})
+    return jsonify({'valid_resources': ['ohlcv', 'ema']})
 
 
 #----------------------------------------------------------------------------
