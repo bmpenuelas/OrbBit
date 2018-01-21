@@ -337,7 +337,7 @@ try:
 except NameError:
     orb.DM.start_API()
 
-    r = requests.get('http://' + LOCAL_HOST + ':5000/datamanager/fetch/start')
+    r = requests.post('http://' + LOCAL_HOST + ':5000/datamanager/fetch/start')
     print(r.json())
 
     orbbit_started = 1
@@ -346,7 +346,7 @@ time.sleep(5)
 
 #%% get OHLCV
 jsonreq = {'res':'ohlcv', 'params':{'symbol':'ETC/USDT','timeframe':'15m'}}
-r = requests.get('http://' + LOCAL_HOST + ':5000/datamanager/get/',json=jsonreq)
+r = requests.post('http://' + LOCAL_HOST + ':5000/datamanager/get/',json=jsonreq)
 ohlcv = r.json()
 print(len(ohlcv))
 

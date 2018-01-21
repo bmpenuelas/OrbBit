@@ -132,7 +132,7 @@ class alert_macd(threading.Thread):
 
         #%% request subscription
         jsonreq = {'res':'macd', 'params':params}
-        r = requests.get('http://' + LOCAL_HOST + ':5000/datamanager/subscribe/add', json=jsonreq)
+        r = requests.post('http://' + LOCAL_HOST + ':5000/datamanager/subscribe/add', json=jsonreq)
         response_dict = r.json()
         print(response_dict)
 

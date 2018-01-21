@@ -1,5 +1,7 @@
 
 import os
+import sys
+import time
 import json
 import pymongo
 from   pkg_resources  import resource_filename
@@ -71,6 +73,7 @@ def get_database_info(database_name, info):
         database_name = 'datamanager'
         info = 'fetching_symbols'
         get_database_info(database_name, info)
+
         database_name = 'ordermanager'
         info = 'user_info'
         get_database_info(database_name, info)
@@ -105,7 +108,7 @@ def get_database_info(database_name, info):
                             'exchanges': ['hitbtc',],
                         },
                         'linternita': {
-                            'exchanges': [],
+                            'exchanges': ['bittrex',],
                         },
                     }
                 },
@@ -159,38 +162,188 @@ def exchange_id_to_user_exchange(exchange_id, user):
 
     if exchange_id == 'hitbtc':
         return ccxt.hitbtc2({   'verbose': False,
-                                'apiKey': exchanges_key[user][exchange_id]['key'], 
+                                'apiKey': exchanges_key[user][exchange_id]['key'],
                                 'secret': exchanges_key[user][exchange_id]['secret']
                             })
     if exchange_id == 'bittrex':
         return ccxt.bittrex({   'verbose': False,
-                                'apiKey': exchanges_key[user][exchange_id]['key'], 
+                                'apiKey': exchanges_key[user][exchange_id]['key'],
                                 'secret': exchanges_key[user][exchange_id]['secret']
                             })
     if exchange_id == 'binance':
         return ccxt.binance({   'verbose': False,
-                                'apiKey': exchanges_key[user][exchange_id]['key'], 
+                                'apiKey': exchanges_key[user][exchange_id]['key'],
                                 'secret': exchanges_key[user][exchange_id]['secret']
                             })
     if exchange_id == 'kraken':
         return ccxt.kraken( {   'verbose': False,
-                                'apiKey': exchanges_key[user][exchange_id]['key'], 
+                                'apiKey': exchanges_key[user][exchange_id]['key'],
                                 'secret': exchanges_key[user][exchange_id]['secret']
                             })
     else:
         return -1
 
 
-def symbol_os(exchange_id, symbol):
-    if exchange_id == 'hitbtc' and os.name == 'nt':
+
+def symbol_os(symbol, exchange_id):
+    if (exchange_id == 'hitbtc' or exchange_id == 'hitbtc2') and os.name == 'nt':
         return symbol.replace('/USDT', '/USD')
     else:
         return symbol
 
 
 
-def read_symbol_os(exchange_id, symbol):
+def read_symbol_os(symbol, exchange_id):
     if exchange_id == 'hitbtc' and os.name == 'nt':
         return symbol.replace('/USD', '/USDT')
     else:
         return symbol
+
+
+
+def get_balance(exchange, symbol=None):
+    retry = 3
+    retry_interval = 0.2
+
+    while retry > 0:
+        try:
+            api_balance = exchange.fetchBalance()
+            break
+        except Exception as ex:
+            print(sys.exc_info()[0])
+            retry -= 1
+            time.sleep(retry_interval)
+    if retry == 0:
+        return -1
+
+    totals = api_balance['total']
+
+    balance = {coin:totals[coin] for coin in totals if totals[coin] > 0.0 }
+
+    if symbol:
+        if symbol in balance:
+            return balance[symbol]
+        else:
+            return 0.0
+
+    else:
+        return balance
+
+
+
+def get_current_price(symbol, exchange):
+    """Get current price.
+
+    Args:
+        symbol
+        exchange (ccxt.Exchange)
+
+    Returns:
+        price (double)
+
+    Example:
+        exchange = user_exchanges['farolillo']['hitbtc']
+        symbol = 'LIFE/BTC'
+        get_current_price(symbol, exchange)
+
+    """
+
+    if exchange.has['fetchTicker']:
+        retry = 3
+        retry_interval = 0.2
+
+        while retry > 0:
+            try:
+                api_ticker = exchange.fetchTicker( symbol_os(symbol, exchange.id) )
+                return api_ticker['last']
+            except Exception as ex:
+              print(sys.exc_info()[0])
+              retry -= 1
+              time.sleep(retry_interval)
+    else:
+        return -1
+
+
+
+def get_coin_symbols(coin, exchange):
+    """Get pairs in which 'coin' can be traded.
+
+    Args:
+        coin
+        exchange (ccxt.Exchange)
+
+    Returns:
+        price (double)
+
+    Example:
+        coin = 'LIFE'
+        exchange = user_exchanges['farolillo']['hitbtc']
+        get_coin_symbols(coin, exchange)
+
+    """
+
+    return [symbol for symbol in exchange.symbols if (coin+'/') in symbol]
+
+
+def get_current_price_usd(coin, exchange, prefer_double_conversion=False):
+    """Get current price in USD.
+
+    Double conversion with coins usually used as quote currency,
+    to USD or USDT.
+
+    Args:
+        coin
+        exchange (ccxt.Exchange)
+
+    Returns:
+        price (double)
+
+    Example:
+        prefer_double_conversion = False
+        coin = 'OMG'
+        exchange = user_exchanges['farolillo']['hitbtc']
+        get_current_price_usd(coin, exchange)
+
+        prefer_double_conversion = True
+        coin = 'OMG'
+        exchange = user_exchanges['farolillo']['hitbtc']
+        get_current_price_usd(coin, exchange)
+
+    """
+
+    usd_equivalents = ('USD', 'USDT')
+    usual_quote_currencies = ('BTC', 'ETH', 'BCC')
+
+    symbols = get_coin_symbols(coin, exchange)
+
+
+    if (coin == 'USD' or coin == 'USDT'):
+      return 1
+
+    if not prefer_double_conversion:
+        for quote in usd_equivalents:
+            if (coin + '/' + quote) in symbols:
+              return get_current_price( (coin + '/' + quote), exchange )
+
+        for quote in usual_quote_currencies:
+            if (coin + '/' + quote) in symbols:
+              base_price  = get_current_price( (coin + '/' + quote), exchange )
+              quote_price = get_current_price( (quote + '/' + 'USD'), exchange )
+
+              return base_price * quote_price
+
+        return -1
+
+    else:
+        for quote in usual_quote_currencies:
+            if (coin + '/' + quote) in symbols:
+              base_price  = get_current_price( (coin + '/' + quote), exchange )
+              quote_price = get_current_price( (quote + '/' + 'USD'), exchange )
+
+              return base_price * quote_price
+
+        for quote in usd_equivalents:
+            if (coin + '/' + quote) in symbols:
+              return get_current_price( (coin + '/' + quote), exchange )
+
+        return -1

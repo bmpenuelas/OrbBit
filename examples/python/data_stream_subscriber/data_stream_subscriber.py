@@ -22,12 +22,12 @@ orb.DM.start_API()
 
 # start the fetchers that ask the exchange for new data
 time.sleep(5)
-r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/fetch/start')
+r = requests.post('http://' + ORBBIT_HOST + ':5000/datamanager/fetch/start')
 time.sleep(5)
 
 #%% request subscription
 jsonreq = {'res':'macd', 'params':{'symbol':'BTC/USDT', 'exchange': 'hitbtc', 'timeframe':'1m', 'ema_fast': 5, 'ema_slow': 12}}
-r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/subscribe/add', json=jsonreq)
+r = requests.post('http://' + ORBBIT_HOST + ':5000/datamanager/subscribe/add', json=jsonreq)
 response_dict = r.json()
 print(response_dict)
 

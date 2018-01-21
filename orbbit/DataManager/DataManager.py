@@ -10,7 +10,8 @@ import numpy as np
 import socket
 from   flask          import Flask, jsonify, abort, make_response, request
 from   flask_httpauth import HTTPBasicAuth
-import ccxt
+import asyncio
+import ccxt.async as ccxt
 import pymongo
 import json
 
@@ -55,16 +56,16 @@ fetching_symbols = get_database_info('datamanager', 'fetching_symbols')
 
 
 
-def get_db_ohlcv(symbol, exchange, timeframe, from_millis, to_millis):
+def get_db_ohlcv(symbol, exchange_id, timeframe, from_millis, to_millis):
     """Get 'ohlcv' documents from db.
 
     Example:
         symbol = 'BTC/USDT'
-        exchange = 'bittrex'
+        exchange_id = 'bittrex'
         timeframe = '1m'
         from_millis = current_millis() - 15 * timeframe_to_millis(timeframe)
         to_millis = current_millis() + 10e3
-        ohlcv_cursor = get_db_ohlcv(symbol, exchange, timeframe, from_millis, to_millis)
+        ohlcv_cursor = get_db_ohlcv(symbol, exchange_id, timeframe, from_millis, to_millis)
     Args:
         symbol, timeframe, from_millis, to_millis
     Returns:
@@ -75,7 +76,7 @@ def get_db_ohlcv(symbol, exchange, timeframe, from_millis, to_millis):
 
     symbol_db = symbol.replace('/', '_')
 
-    collection_name = exchange + '_' + symbol_db
+    collection_name = exchange_id + '_' + symbol_db
     collection = datamanager_db[collection_name]
 
     query = {'ohlcv': {'$exists': True},
@@ -207,11 +208,12 @@ def start_fetch():
       List of symbols that are being fetched.
 
     """
+
     fetching_symbols = get_database_info('datamanager', 'fetching_symbols')
-    for exchange in fetching_symbols:
-        for symbol in fetching_symbols[exchange]:
-            for timeframe in fetching_symbols[exchange][symbol]:
-                params = {'symbol': symbol, 'exchange': exchange, 'timeframe': timeframe}
+    for exchange_id in fetching_symbols:
+        for symbol in fetching_symbols[exchange_id]:
+            for timeframe in fetching_symbols[exchange_id][symbol]:
+                params = {'symbol': symbol, 'exchange': exchange_id, 'timeframe': timeframe}
                 new_fetch_thread_ohlcv = fetch_thread_ohlcv(params)
                 new_fetch_thread_ohlcv.start()
 
@@ -228,7 +230,9 @@ class fetch_thread_ohlcv(threading.Thread):
         params (dict)
             symbol (str)
             timeframe (str)
+
     """
+
     def __init__(self, params):
         threading.Thread.__init__(self)
         self.params = params
@@ -269,7 +273,7 @@ class fetch_thread_ohlcv(threading.Thread):
             while not(fetch_from_API_success):
                 try:
                     # print('Exchange query for ' + self.params['symbol'] +' '+ self.params['timeframe'])
-                    ohlcv = self.exchange.fetch_ohlcv(symbol_os(self.exchange_id, self.params['symbol']), self.params['timeframe'], nxt_fetch)
+                    ohlcv = self.exchange.fetch_ohlcv(symbol_os(self.params['symbol'], self.exchange_id), self.params['timeframe'], nxt_fetch)
                     fetch_from_API_success = 1
                 except:
                     print('ERR ' + self.exchange_id + ' query for ' + self.params['symbol'] +' '+ self.params['timeframe'])
@@ -302,17 +306,20 @@ def fill_ohlcv(symbol, exchange_id, timeframe, from_millis=0):
     """ Attempt to fill gaps in the DataManager database by fetching many data at once.
         It is limited by how back in time the exchange API provides data.
 
+    Args:
+        symbol, timeframe, from_millis: See fetch_thread_ohlcv.
+        
+    Returns:
+        filled: gaps successfully filled.
+        missing: gaps that could not be filled.
+
     Example:
         symbol = 'BTC/USDT'
         exchange_id = 'hitbtc'
         timeframe = '1m'
         from_millis = current_millis() - timeframe_to_millis(timeframe) * 1000
         fill_ohlcv(symbol, exchange_id, timeframe, from_millis)
-    Args:
-        symbol, timeframe, from_millis: See fetch_thread_ohlcv.
-    Returns:
-        filled: gaps successfully filled.
-        missing: gaps that could not be filled.
+
     """
 
     data_limit = 1000
@@ -338,7 +345,7 @@ def fill_ohlcv(symbol, exchange_id, timeframe, from_millis=0):
         while not fetch_from_API_success:
             try:
                 # print('Filling ' + symbol + ' ' + timeframe + ' from ' + str(from_part))
-                ohlcv = exchange.fetch_ohlcv(symbol_os(exchange_id, symbol), timeframe, since=from_part, limit=data_limit)
+                ohlcv = exchange.fetch_ohlcv(symbol_os(symbol, exchange_id), timeframe, since=from_part, limit=data_limit)
                 fetch_from_API_success = 1
             except:
                 print('ERR Exchange - Fill OHLCV ' + symbol + ' @ ' + exchange_id + ' ' + timeframe)
@@ -367,7 +374,7 @@ class transform_thread_macd(threading.Thread):
     Difference between two EMA with different sample number.
 
     Args:
-        exchange (str)
+        exchange_id (str)
         symbol (str)
         timeframe (str)
         ema_fast (int)
@@ -383,16 +390,16 @@ class transform_thread_macd(threading.Thread):
         threading.Thread.__init__(self)
         parameters = stream_parameters
 
-        self.symbol    = parameters['symbol']
-        self.exchange  = parameters['exchange']
-        self.timeframe = parameters['timeframe']
-        self.ema_fast  = parameters['ema_fast']
-        self.ema_slow  = parameters['ema_slow']
+        self.symbol      = parameters['symbol']
+        self.exchange_id = parameters['exchange']
+        self.timeframe   = parameters['timeframe']
+        self.ema_fast    = parameters['ema_fast']
+        self.ema_slow    = parameters['ema_slow']
 
         self.stream_id = res_params_to_stream_id('macd', parameters)
 
         # subscribe to fetcher
-        ohlcv_params = {'symbol': self.symbol, 'exchange': self.exchange, 'timeframe': self.timeframe}
+        ohlcv_params = {'symbol': self.symbol, 'exchange': self.exchange_id, 'timeframe': self.timeframe}
         stream_id_ohlcv = res_params_to_stream_id('ohlcv', ohlcv_params)
 
         self.ohlcv_queue = new_subscriber_queue(stream_id_ohlcv)
@@ -403,7 +410,7 @@ class transform_thread_macd(threading.Thread):
         from_millis = current_millis() - (self.ema_slow + 6) * timeframe_to_millis(self.timeframe)
         to_millis = current_millis() + 10e3
 
-        ohlcv_cursor = get_db_ohlcv(self.symbol, self.exchange, self.timeframe, int(from_millis), int(to_millis))
+        ohlcv_cursor = get_db_ohlcv(self.symbol, self.exchange_id, self.timeframe, int(from_millis), int(to_millis))
         ohlcv = cursor_to_list(ohlcv_cursor)
 
 
@@ -514,13 +521,14 @@ def unauthorized():
 #   Route /datamanager
 #----------------------------------------------------------------------------
 
-@app.route('/datamanager', methods=['GET'])
+@app.route('/datamanager', methods=['POST'])
 def datamanager_status():
     """ Get datamanager status.
     Args:
 
     Returns:
         Status of the DataManager API and processes.
+
     """
 
     return jsonify({'fetching_symbols': get_database_info('datamanager', 'fetching_symbols')})
@@ -531,7 +539,7 @@ def datamanager_status():
 #   Route /datamanager/fetch
 #----------------------------------------------------------------------------
 
-@app.route('/datamanager/fetch', methods=['GET'])
+@app.route('/datamanager/fetch', methods=['POST'])
 def fetch():
     return jsonify({'fetching_symbols': get_database_info('datamanager', 'fetching_symbols')})
 
@@ -540,9 +548,10 @@ def fetch():
 #   Route /datamanager/fetch/<command>
 #----------------------------------------------------------------------------
 
-@app.route('/datamanager/fetch/<string:command>', methods=['GET'])
+@app.route('/datamanager/fetch/<string:command>', methods=['POST'])
 def fetch_commands(command):
     """ Fetcher commands.
+
     Args:
         start: starts one fetcher per symbol and timeframe as set in fetching_symbols.
 
@@ -550,6 +559,7 @@ def fetch_commands(command):
 
     Returns:
         Symbols/timeframes being fetched.
+
     """
 
     # Command <start>
@@ -559,26 +569,26 @@ def fetch_commands(command):
 
     # Command <add>
     elif command == 'add':
-        params = request.json['params']
+        params      = request.json['params']
 
-        exchange = params['exchange']
-        symbol = params['symbol']
-        timeframe = params['timeframe']
+        exchange_id = params['exchange']
+        symbol      = params['symbol']
+        timeframe   = params['timeframe']
 
         fetching_symbols = get_database_info('datamanager', 'fetching_symbols')
 
 
         is_new = 1
-        if exchange in fetching_symbols:
-            if symbol in fetching_symbols[exchange]:
-                if timeframe in fetching_symbols[exchange][symbol]:
+        if exchange_id in fetching_symbols:
+            if symbol in fetching_symbols[exchange_id]:
+                if timeframe in fetching_symbols[exchange_id][symbol]:
                     is_new = 0
                 else:
-                    fetching_symbols[exchange][symbol].append(timeframe)
+                    fetching_symbols[exchange_id][symbol].append(timeframe)
             else:
-                fetching_symbols[exchange][symbol] = [timeframe]
+                fetching_symbols[exchange_id][symbol] = [timeframe]
         else:
-            fetching_symbols[exchange] = {symbol: [timeframe]}
+            fetching_symbols[exchange_id] = {symbol: [timeframe]}
 
         if is_new:
             fetching_symbols[symbol].append(timeframe)
@@ -600,7 +610,7 @@ def fetch_commands(command):
 #   Route /datamanager/get
 #----------------------------------------------------------------------------
 
-@app.route('/datamanager/get', methods=['GET'])
+@app.route('/datamanager/get', methods=['POST'])
 def get():
     """ List DataManager available data.
 
@@ -611,6 +621,7 @@ def get():
 
     Returns:
       Available OHLCV symbols and timeframes.
+
     """
 
     # \todo List of available data, fetched and processed
@@ -622,7 +633,7 @@ def get():
 #   Route /datamanager/get/<command>
 #----------------------------------------------------------------------------
 
-@app.route('/datamanager/get/', methods=['GET'])
+@app.route('/datamanager/get/', methods=['POST'])
 def get_commands():
     """ Serve data collected by the DataManager block.
 
@@ -630,6 +641,7 @@ def get_commands():
 
     Returns:
         Requested data.
+
     """
     get_resource = request.json['res']
     get_parameters = request.json['params']
@@ -637,7 +649,7 @@ def get_commands():
 
     # Resource 'ohlcv'
     if get_resource == 'ohlcv':
-        exchange    = get_parameters['exchange']
+        exchange_id = get_parameters['exchange']
         symbol      = get_parameters['symbol']
         timeframe   = get_parameters['timeframe']
 
@@ -654,7 +666,7 @@ def get_commands():
             to_millis = current_millis() + 10e3
 
 
-        ohlcv_cursor = get_db_ohlcv(symbol, exchange, timeframe, from_millis, to_millis)
+        ohlcv_cursor = get_db_ohlcv(symbol, exchange_id, timeframe, from_millis, to_millis)
 
         ohlcv = cursor_to_list(ohlcv_cursor)
 
@@ -665,7 +677,7 @@ def get_commands():
 
 
     elif get_resource == 'ema':
-        exchange    = get_parameters['exchange']
+        exchange_id = get_parameters['exchange']
         symbol      = get_parameters['symbol']
         timeframe   = get_parameters['timeframe']
         ema_samples = get_parameters['ema_samples']
@@ -683,7 +695,7 @@ def get_commands():
             to_millis = current_millis() + 10e3
 
 
-        ohlcv_cursor = get_db_ohlcv(symbol, exchange, timeframe, from_millis, to_millis)
+        ohlcv_cursor = get_db_ohlcv(symbol, exchange_id, timeframe, from_millis, to_millis)
 
         ohlcv = cursor_to_list(ohlcv_cursor)
 
@@ -710,7 +722,7 @@ def get_commands():
 #   Route /datamanager/subscribe
 #----------------------------------------------------------------------------
 
-@app.route('/datamanager/subscribe', methods=['GET'])
+@app.route('/datamanager/subscribe', methods=['POST'])
 def subscribe():
     """ List data streams you can subscribe to.
 
@@ -722,6 +734,7 @@ def subscribe():
     Returns:
         valid_subscribtion_resources (str list)
         active_subscription_services (str list)
+
     """
 
     return jsonify({'valid_subscribtion_resources': valid_subscribtion_resources,
@@ -758,14 +771,18 @@ def send_to_subscribers(stream_id, data):
     Args:
         stream_id (str) unique stream identifier
         data (dict) json-like structure containing the new data
+
     Returns:
+
     """
+
     if stream_id in subscriber_queues:
         for subs_queue in subscriber_queues[stream_id]:
             subs_queue.put( data )
 
 
-@app.route('/datamanager/subscribe/<string:command>', methods=['GET'])
+
+@app.route('/datamanager/subscribe/<string:command>', methods=['POST'])
 def subscribe_commands(command):
     """ Manage subscriptions to live data.
 
@@ -777,6 +794,7 @@ def subscribe_commands(command):
     Returns:
         IP (str)
         port (int)
+
     """
 
     # Command <add>
@@ -822,6 +840,7 @@ class subscription_thread(threading.Thread):
     Args:
 
     Returns:
+
     """
     def __init__(self, stream_resource, stream_parameters, host, port):
         threading.Thread.__init__(self)
@@ -900,7 +919,9 @@ class subscriber_thread(threading.Thread):
     Args:
 
     Returns:
+
     """
+
     def __init__(self, queue, conn):
         threading.Thread.__init__(self)
         self.queue = queue
@@ -920,7 +941,7 @@ class subscriber_thread(threading.Thread):
 #   Route /...
 #----------------------------------------------------------------------------
 
-@app.route('/ticker', methods=['GET'])
+@app.route('/ticker', methods=['POST'])
 def get_ticker():
     """ Get BTC/USDT ticker info.
 
@@ -928,6 +949,7 @@ def get_ticker():
 
     Returns:
       Json-formatted data.
+
     """
 
     return jsonify({'ticker': fetch_ticker()})
@@ -960,7 +982,9 @@ def start_API():
     Args:
 
     Returns:
+    
     """
+    
     print("Starting DataManager API Server.")
     thread_DataManager_API.start()
 

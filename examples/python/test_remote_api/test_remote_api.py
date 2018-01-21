@@ -9,5 +9,5 @@ DATAMANAGERPORT = ':5000'
 ORDERMANAGERPORT = ':5001'
 
 #%% DataManager status
-r = requests.get('http://' + ORBBIT_HOST + DATAMANAGERPORT + '/datamanager')
+r = requests.post('http://' + ORBBIT_HOST + DATAMANAGERPORT + '/datamanager')
 print(r.json())

@@ -25,6 +25,6 @@ orb.UI.telegram_bot.start()
 time.sleep(5)
 ORBBIT_HOST = socket.gethostbyname('localhost')
 
-r = requests.get('http://' + ORBBIT_HOST + ':5000/datamanager/fetch/start')
+r = requests.post('http://' + ORBBIT_HOST + ':5000/datamanager/fetch/start')
 print(r.json())
 
