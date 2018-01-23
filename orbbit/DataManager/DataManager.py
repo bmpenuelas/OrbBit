@@ -8,8 +8,8 @@ import threading
 import queue
 import numpy as np
 import socket
-from   flask          import Flask, jsonify, abort, make_response, request
-from   flask_httpauth import HTTPBasicAuth
+from   flask      import Flask, jsonify, abort, make_response, request
+from   flask_cors import CORS
 import asyncio
 import ccxt.async as ccxt
 import pymongo
@@ -50,42 +50,7 @@ SUBS_PORT_LIMIT = 6000
 #                              DATABASE SETUP                               #
 #############################################################################
 
-datamanager_db = database_connection('datamanager')
-
 fetching_symbols = get_database_info('datamanager', 'fetching_symbols')
-
-
-
-def get_db_ohlcv(symbol, exchange_id, timeframe, from_millis, to_millis):
-    """Get 'ohlcv' documents from db.
-
-    Example:
-        symbol = 'BTC/USDT'
-        exchange_id = 'bittrex'
-        timeframe = '1m'
-        from_millis = current_millis() - 15 * timeframe_to_millis(timeframe)
-        to_millis = current_millis() + 10e3
-        ohlcv_cursor = get_db_ohlcv(symbol, exchange_id, timeframe, from_millis, to_millis)
-    Args:
-        symbol, timeframe, from_millis, to_millis
-    Returns:
-        pymongo cursor pointing to the docs
-    """
-
-    projection = {'date8061': True, 'ohlcv': True}
-
-    symbol_db = symbol.replace('/', '_')
-
-    collection_name = exchange_id + '_' + symbol_db
-    collection = datamanager_db[collection_name]
-
-    query = {'ohlcv': {'$exists': True},
-             'timeframe': timeframe,
-             'date8061': {'$gt': from_millis, '$lt': to_millis}
-            }
-
-    print(len(cursor_to_list(collection.find(query, projection).sort('date8061', pymongo.ASCENDING))))
-    return collection.find(query, projection).sort('date8061', pymongo.ASCENDING)
 
 
 
@@ -97,96 +62,6 @@ def get_db_ohlcv(symbol, exchange_id, timeframe, from_millis, to_millis):
 fetch_exchanges = get_database_info('datamanager', 'fetch_exchanges')
 
 exchanges = {new_exchange: exchange_id_to_exchange(new_exchange) for new_exchange in fetch_exchanges}
-
-
-
-#%%##########################################################################
-#                             GENERIC FUNCTIONS                             #
-#############################################################################
-
-def current_millis():
-    return time.time() * 1000
-
-
-
-def cursor_to_list(db_cursor):
-    destination_list = []
-    for doc in db_cursor:
-        destination_list.append(doc)
-    return destination_list
-
-
-
-def timeframe_to_millis(timeframe):
-    """ Convert from readable string to milliseconds.
-    Args:
-
-        timeframe (str): Valid values:
-                             '*m' minutes
-                             '*s' seconds
-    Returns:
-    """
-    if   'M' in timeframe:
-        return int(timeframe.replace('M', '')) * 30 * 24 * 60 * 60 * 1000
-    elif 'w' in timeframe:
-        return int(timeframe.replace('w', '')) * 7  * 24 * 60 * 60 * 1000
-    elif 'd' in timeframe:
-        return int(timeframe.replace('d', '')) * 24 * 60 * 60 * 1000
-    elif 'h' in timeframe:
-        return int(timeframe.replace('h', '')) * 60 * 60 * 1000
-    elif 'm' in timeframe:
-        return int(timeframe.replace('m', '')) * 60 * 1000
-    elif 's' in timeframe:
-        return int(timeframe.replace('s', '')) * 1000
-    else:
-        raise ValueError('Invalid representation.')
-
-
-
-def candle_to_document(candle, timeframe):
-    """ Convert candles (ohlcv) to database documents.
-    Args:
-        candle: as output by ccxt ohlcv
-        timeframe: see timeframe_to_millis for valid values
-    Returns:
-        document for MongoDB.
-    """
-    new_row = {}
-    new_row['open']      = candle[1]
-    new_row['high']      = candle[2]
-    new_row['low']       = candle[3]
-    new_row['close']     = candle[4]
-    new_row['volume']    = candle[5]
-
-    return {'_id': (timeframe + '_' + str(candle[0])),
-            'timeframe': timeframe,
-            'date8061': candle[0],
-            'ohlcv': new_row,
-           }
-
-
-
-def res_params_to_stream_id(res, params):
-    """
-    Example:
-    res = 'macd'
-    params = {
-              'symbol': 'BTC/USDT',
-              'timeframe': '15m',
-              'ema_fast': 12,
-              'ema_slow': 5,
-             }
-    res_params_to_stream_id(res, params)
-    """
-    for valid_resources in valid_subscribtion_resources.values():
-        for val in valid_resources:
-            if val == res:
-                param_values = [params[key] for key in sorted(params.keys())]
-                stream_id = res
-                for param_value in param_values:
-                    stream_id += '_' + str(param_value)
-                return stream_id
-    return -1
 
 
 
@@ -315,7 +190,7 @@ def fill_ohlcv(symbol, exchange_id, timeframe, from_millis=0):
 
     Example:
         symbol = 'BTC/USDT'
-        exchange_id = 'hitbtc'
+        exchange_id = 'hitbtc2'
         timeframe = '1m'
         from_millis = current_millis() - timeframe_to_millis(timeframe) * 1000
         fill_ohlcv(symbol, exchange_id, timeframe, from_millis)
@@ -477,40 +352,18 @@ class transform_thread_macd(threading.Thread):
 #############################################################################
 
 #----------------------------------------------------------------------------
-# Flask App error funcs redefinition
+# Flask app error funcs redefinition
 #----------------------------------------------------------------------------
 
-app = Flask(__name__)
+datamanager_flask_app = Flask(__name__)
 
-@app.errorhandler(404)
+@datamanager_flask_app.errorhandler(404)
 def not_found(error):
     return make_response(jsonify({'error': 'Not found'}), 404)
 
-@app.errorhandler(400)
+@datamanager_flask_app.errorhandler(400)
 def bad_request(error):
     return make_response(jsonify({'error': 'Bad request'}), 400)
-
-
-
-#----------------------------------------------------------------------------
-# AUTHENTICATION
-#----------------------------------------------------------------------------
-
-auth = HTTPBasicAuth()
-""" Add @auth.login_required to a route/method definition to make it
-    password-protected.
-"""
-
-@auth.get_password
-def get_password(username):
-    if username == 'rob':
-        return 'bot'
-    return None
-
-@auth.error_handler
-def unauthorized():
-    return make_response(jsonify({'error': 'Unauthorized access'}), 401)
-
 
 
 
@@ -521,7 +374,7 @@ def unauthorized():
 #   Route /datamanager
 #----------------------------------------------------------------------------
 
-@app.route('/datamanager', methods=['POST'])
+@datamanager_flask_app.route('/datamanager', methods=['POST'])
 def datamanager_status():
     """ Get datamanager status.
     Args:
@@ -539,7 +392,7 @@ def datamanager_status():
 #   Route /datamanager/fetch
 #----------------------------------------------------------------------------
 
-@app.route('/datamanager/fetch', methods=['POST'])
+@datamanager_flask_app.route('/datamanager/fetch', methods=['POST'])
 def fetch():
     return jsonify({'fetching_symbols': get_database_info('datamanager', 'fetching_symbols')})
 
@@ -548,7 +401,7 @@ def fetch():
 #   Route /datamanager/fetch/<command>
 #----------------------------------------------------------------------------
 
-@app.route('/datamanager/fetch/<string:command>', methods=['POST'])
+@datamanager_flask_app.route('/datamanager/fetch/<string:command>', methods=['POST'])
 def fetch_commands(command):
     """ Fetcher commands.
 
@@ -610,7 +463,7 @@ def fetch_commands(command):
 #   Route /datamanager/get
 #----------------------------------------------------------------------------
 
-@app.route('/datamanager/get', methods=['POST'])
+@datamanager_flask_app.route('/datamanager/get', methods=['POST'])
 def get():
     """ List DataManager available data.
 
@@ -633,7 +486,7 @@ def get():
 #   Route /datamanager/get/<command>
 #----------------------------------------------------------------------------
 
-@app.route('/datamanager/get/', methods=['POST'])
+@datamanager_flask_app.route('/datamanager/get/', methods=['POST'])
 def get_commands():
     """ Serve data collected by the DataManager block.
 
@@ -722,7 +575,7 @@ def get_commands():
 #   Route /datamanager/subscribe
 #----------------------------------------------------------------------------
 
-@app.route('/datamanager/subscribe', methods=['POST'])
+@datamanager_flask_app.route('/datamanager/subscribe', methods=['POST'])
 def subscribe():
     """ List data streams you can subscribe to.
 
@@ -740,12 +593,6 @@ def subscribe():
     return jsonify({'valid_subscribtion_resources': valid_subscribtion_resources,
                     'active_subscription_services': active_subscription_services,
                    })
-
-
-# Types that are implemented
-valid_subscribtion_resources = {'fetched': ['ohlcv',],
-                                'transformed': ['macd',],
-                               }
 
 
 
@@ -782,7 +629,7 @@ def send_to_subscribers(stream_id, data):
 
 
 
-@app.route('/datamanager/subscribe/<string:command>', methods=['POST'])
+@datamanager_flask_app.route('/datamanager/subscribe/<string:command>', methods=['POST'])
 def subscribe_commands(command):
     """ Manage subscriptions to live data.
 
@@ -941,7 +788,7 @@ class subscriber_thread(threading.Thread):
 #   Route /...
 #----------------------------------------------------------------------------
 
-@app.route('/ticker', methods=['POST'])
+@datamanager_flask_app.route('/ticker', methods=['POST'])
 def get_ticker():
     """ Get BTC/USDT ticker info.
 
@@ -968,7 +815,7 @@ class DataManager_API (threading.Thread):
 
     def run(self):
         print('DataManager_API STARTED with threadID ' + self.name)
-        app.run(host=DATAMANAGER_API_IP, port=DATAMANAGER_API_PORT, debug=False)
+        datamanager_flask_app.run(host=DATAMANAGER_API_IP, port=DATAMANAGER_API_PORT, debug=False)
         print('DataManager_API STOPPED with threadID ' + self.name)
 
 

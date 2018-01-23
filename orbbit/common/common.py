@@ -1,17 +1,119 @@
+#!/usr/bin/python3
 
 import os
 import sys
 import time
+from   datetime import timedelta
+from   flask import make_response, request, current_app
+from   functools import update_wrapper
 import json
 import pymongo
 from   pkg_resources  import resource_filename
 import ccxt
+from   flask_httpauth import HTTPBasicAuth
+
+
+#%%##########################################################################
+#                             GENERIC FUNCTIONS                             #
+#############################################################################
+
+def current_millis():
+    return time.time() * 1000
 
 
 
-#%%--------------------------------------------------------------------------
-# Import keys
-#----------------------------------------------------------------------------
+def cursor_to_list(db_cursor):
+    destination_list = []
+    for doc in db_cursor:
+        destination_list.append(doc)
+    return destination_list
+
+
+
+def timeframe_to_millis(timeframe):
+    """ Convert from readable string to milliseconds.
+    Args:
+
+        timeframe (str): Valid values:
+                             '*m' minutes
+                             '*s' seconds
+    Returns:
+    """
+    if   'M' in timeframe:
+        return int(timeframe.replace('M', '')) * 30 * 24 * 60 * 60 * 1000
+    elif 'w' in timeframe:
+        return int(timeframe.replace('w', '')) * 7  * 24 * 60 * 60 * 1000
+    elif 'd' in timeframe:
+        return int(timeframe.replace('d', '')) * 24 * 60 * 60 * 1000
+    elif 'h' in timeframe:
+        return int(timeframe.replace('h', '')) * 60 * 60 * 1000
+    elif 'm' in timeframe:
+        return int(timeframe.replace('m', '')) * 60 * 1000
+    elif 's' in timeframe:
+        return int(timeframe.replace('s', '')) * 1000
+    else:
+        raise ValueError('Invalid representation.')
+
+
+
+def candle_to_document(candle, timeframe):
+    """ Convert candles (ohlcv) to database documents.
+    Args:
+        candle: as output by ccxt ohlcv
+        timeframe: see timeframe_to_millis for valid values
+    Returns:
+        document for MongoDB.
+    """
+    new_row = {}
+    new_row['open']      = candle[1]
+    new_row['high']      = candle[2]
+    new_row['low']       = candle[3]
+    new_row['close']     = candle[4]
+    new_row['volume']    = candle[5]
+
+    return {'_id': (timeframe + '_' + str(candle[0])),
+            'timeframe': timeframe,
+            'date8061': candle[0],
+            'ohlcv': new_row,
+           }
+
+
+
+# Types that are implemented
+valid_subscribtion_resources = {'fetched': ['ohlcv',],
+                                'transformed': ['macd',],
+                               }
+
+
+
+def res_params_to_stream_id(res, params):
+    """
+    Example:
+    res = 'macd'
+    params = {
+              'symbol': 'BTC/USDT',
+              'timeframe': '15m',
+              'ema_fast': 12,
+              'ema_slow': 5,
+             }
+    res_params_to_stream_id(res, params)
+    """
+    for valid_resources in valid_subscribtion_resources.values():
+        for val in valid_resources:
+            if val == res:
+                param_values = [params[key] for key in sorted(params.keys())]
+                stream_id = res
+                for param_value in param_values:
+                    stream_id += '_' + str(param_value)
+                return stream_id
+    return -1
+
+
+
+
+#%%##########################################################################
+#                                IMPORT KEYS                                #
+#############################################################################
 
 def dict_from_key(route):
     key_route = resource_filename('orbbit', route)
@@ -24,9 +126,9 @@ def dict_from_key(route):
 
 
 
-#%%--------------------------------------------------------------------------
-# Setup Databases
-#----------------------------------------------------------------------------
+#%%##########################################################################
+#                              SETUP DATABASES                              #
+#############################################################################
     """
     Note:
         To delete all database contents run the following block. Use with caution!
@@ -89,23 +191,33 @@ def get_database_info(database_name, info):
         if database_name == 'datamanager':
             new_documents = [
                 {'fetching_symbols':
-                    {'hitbtc':  {'BTC/USDT': ['1m',],# '5m', '30m', '1h', '1d',],
-                                 #'ETH/USDT': ['1m',], '5m', '30m', '1h', '1d',],
+                    {'hitbtc2': {'DASH/USDT':  ['1m', '1h',],
+                                 'OMG/BTC':    ['1m', '1h',],
+                                 'ETC/USDT':   ['1m', '1h',],
+                                 'BTC/USDT':   ['1m', '1h',],
+                                 'TRX/USDT':   ['1m', '1h',],
+                                 'XEM/USDT':   ['1m', '1h',],
+                                 'BCH/USDT':   ['1m', '1h',],
+                                 'STRAT/USDT': ['1m', '1h',],
+                                 'XRP/USDT':   ['1m', '1h',],
+                                 'PAY/BTC':    ['1m', '1h',],
+                                 'XMR/USDT':   ['1m', '1h',],
+                                 'ETH/USDT':   ['1m', '1h',],
+                                 'NEO/USDT':   ['1m', '1h',],
                                 },
-                     'bittrex': {'BTC/USDT': ['1m',],# '5m', '30m', '1h', '1d',],
-                                 #'ETH/USDT': ['1m',], '5m', '30m', '1h', '1d',],
+                     'bittrex': {'BTC/USDT': ['1m', '1h',],
                                 },
                     }
                 },
                 {'fetch_exchanges':
-                    ['hitbtc', 'bittrex', 'binance', 'kraken']
+                    ['hitbtc2', 'bittrex', 'binance', 'kraken']
                 },
             ]
         elif database_name == 'ordermanager':
             new_documents = [
                 {   'user_info': {
                         'farolillo': {
-                            'exchanges': ['hitbtc',],
+                            'exchanges': ['hitbtc2',],
                         },
                         'linternita': {
                             'exchanges': ['bittrex',],
@@ -125,8 +237,57 @@ def update_database_info(database_name, key, value):
 
 
 
+#----------------------------------------------------------------------------
+#   Get information sets from DB
+#----------------------------------------------------------------------------
+
+def get_db_ohlcv(symbol, exchange_id, timeframe, from_millis, to_millis):
+    """Get 'ohlcv' documents from db.
+
+    Example:
+        symbol = 'BTC/USDT'
+        exchange_id = 'bittrex'
+        timeframe = '1m'
+        from_millis = current_millis() - 15 * timeframe_to_millis(timeframe)
+        to_millis = current_millis() + 10e3
+        ohlcv_cursor = get_db_ohlcv(symbol, exchange_id, timeframe, from_millis, to_millis)
+    Args:
+        symbol, timeframe, from_millis, to_millis
+    Returns:
+        pymongo cursor pointing to the docs
+    """
+
+    projection = {'date8061': True, 'ohlcv': True}
+
+    symbol_db = symbol.replace('/', '_')
+
+    collection_name = exchange_id + '_' + symbol_db
+    collection = datamanager_db[collection_name]
+
+    query = {'ohlcv': {'$exists': True},
+             'timeframe': timeframe,
+             'date8061': {'$gt': from_millis, '$lt': to_millis}
+            }
+
+    # print('get_db_ohlcv '+ str(len(cursor_to_list(collection.find(query, projection).sort('date8061', pymongo.ASCENDING)))))
+    return collection.find(query, projection).sort('date8061', pymongo.ASCENDING)
+
+
+
+
+#----------------------------------------------------------------------------
+#   Databases Connections
+#----------------------------------------------------------------------------
+
+datamanager_db = database_connection('datamanager')
+
+ordermanager_db = database_connection('ordermanager')
+
+
+
+
 #%%##########################################################################
-#                              EXCHANGES SETUP                              #
+#                              SETUP EXCHANGES                              #
 #############################################################################
 
 #def add_exchange(exchange_id, exchanges, user):
@@ -146,7 +307,7 @@ def update_database_info(database_name, key, value):
 
 
 def exchange_id_to_exchange(exchange_id):
-    if exchange_id == 'hitbtc':
+    if exchange_id == 'hitbtc2':
         return ccxt.hitbtc2({'verbose': False})
     if exchange_id == 'bittrex':
         return ccxt.bittrex({'verbose': False})
@@ -160,7 +321,7 @@ def exchange_id_to_exchange(exchange_id):
 def exchange_id_to_user_exchange(exchange_id, user):
     exchanges_key = dict_from_key('OrderManager/keys/exchanges.key')
 
-    if exchange_id == 'hitbtc':
+    if exchange_id == 'hitbtc2':
         return ccxt.hitbtc2({   'verbose': False,
                                 'apiKey': exchanges_key[user][exchange_id]['key'],
                                 'secret': exchanges_key[user][exchange_id]['secret']
@@ -186,7 +347,7 @@ def exchange_id_to_user_exchange(exchange_id, user):
 
 
 def symbol_os(symbol, exchange_id):
-    if (exchange_id == 'hitbtc' or exchange_id == 'hitbtc2') and os.name == 'nt':
+    if (exchange_id == 'hitbtc2' or exchange_id == 'hitbtc2') and os.name == 'nt':
         return symbol.replace('/USDT', '/USD')
     else:
         return symbol
@@ -194,10 +355,20 @@ def symbol_os(symbol, exchange_id):
 
 
 def read_symbol_os(symbol, exchange_id):
-    if exchange_id == 'hitbtc' and os.name == 'nt':
+    if (exchange_id == 'hitbtc2' or exchange_id == 'hitbtc2') and os.name == 'nt':
         return symbol.replace('/USD', '/USDT')
     else:
         return symbol
+
+
+
+def symbol_base(symbol, exchange_id):
+    return read_symbol_os(symbol, exchange_id).split('/')[0]
+
+
+
+def symbol_quote(symbol, exchange_id):
+    return read_symbol_os(symbol, exchange_id).split('/')[1]
 
 
 
@@ -210,10 +381,10 @@ def get_balance(exchange, symbol=None):
             api_balance = exchange.fetchBalance()
             break
         except Exception as ex:
-            print(sys.exc_info()[0])
             retry -= 1
             time.sleep(retry_interval)
     if retry == 0:
+        print('Retried but failed get_balance ' + exchange.id)
         return -1
 
     totals = api_balance['total']
@@ -231,6 +402,100 @@ def get_balance(exchange, symbol=None):
 
 
 
+def get_balance_usd(exchange, symbol=None):
+    balance = get_balance(exchange, symbol)
+
+    balance_usd = {coin: get_current_price_usd(coin, exchange) * balance[coin] for coin in balance}
+    total_usd = sum(list(balance_usd.values()))
+
+    return balance_usd, total_usd
+
+
+
+def get_trade_history(exchange, symbol=None):
+    """ Get trade history.
+
+    Note:
+        To get all the orders:
+            hitbtc exchange needs to merge fetchClosedOrders() with fetchMyTrades().
+            bittrex exchange needs to merge fetchOrders() + fetchOpenOrders().
+            binance won't allow to fetch them all at once, you have to iterate over your symbols.
+
+    Args:
+        exchange
+
+    Returns:
+        trade_history (dict)
+            symbol
+            amount
+            price
+
+    """
+
+    trade_history = []
+
+    if exchange.id == 'hitbtc2':
+        api_my_trades = exchange.fetchMyTrades(limit=1000)
+        trade_history = api_my_trades
+
+    elif exchange.id == 'bittrex':
+        api_orders = exchange.fetchOrders(limit=1000)
+        trade_history = api_orders
+
+    else:
+        return -1
+
+    if symbol:
+        print(trade_history)
+        return [trade for trade in trade_history if read_symbol_os(trade['symbol'], exchange.id) == symbol]
+    else:
+        return trade_history
+
+
+
+def get_sell_history(exchange, symbol=None):
+    """
+    Example:
+        exchange = user_exchanges['farolillo']['hitbtc2']
+        symbol = 'XRP/USDT'
+        get_sell_history(exchange, symbol)
+    """
+    trade_history = get_trade_history(exchange, symbol)
+    return [trade for trade in trade_history if trade['side'] == 'sell']
+
+
+
+def get_buy_history(exchange, symbol=None):
+    """
+    Example:
+        exchange = user_exchanges['farolillo']['hitbtc2']
+        symbol = 'XRP/USDT'
+        get_buy_history(exchange, symbol)
+    """
+    trade_history = get_trade_history(exchange, symbol)
+    return [trade for trade in trade_history if trade['side'] == 'buy']
+
+
+
+def get_open_orders(exchange):
+    open_orders = []
+
+    if exchange.id == 'hitbtc2':
+        api_closed_orders = exchange.fetchClosedOrders(limit=1000)
+        open_orders = [order for order in api_closed_orders if order['status'] == 'open']
+
+    elif exchange.id == 'bittrex':
+        api_open_orders = exchange.fetchOpenOrders(limit=1000)
+        open_orders = api_open_orders
+        #\todo create one and cancel, see what happens
+
+    else:
+        return -1
+
+    return open_orders
+
+
+
 def get_current_price(symbol, exchange):
     """Get current price.
 
@@ -242,7 +507,7 @@ def get_current_price(symbol, exchange):
         price (double)
 
     Example:
-        exchange = user_exchanges['farolillo']['hitbtc']
+        exchange = user_exchanges['farolillo']['hitbtc2']
         symbol = 'LIFE/BTC'
         get_current_price(symbol, exchange)
 
@@ -257,9 +522,11 @@ def get_current_price(symbol, exchange):
                 api_ticker = exchange.fetchTicker( symbol_os(symbol, exchange.id) )
                 return api_ticker['last']
             except Exception as ex:
-              print(sys.exc_info()[0])
-              retry -= 1
-              time.sleep(retry_interval)
+                retry -= 1
+                time.sleep(retry_interval)
+        print('Retried but failed get_current_price ' + symbol)
+        return -1
+
     else:
         return -1
 
@@ -277,7 +544,7 @@ def get_coin_symbols(coin, exchange):
 
     Example:
         coin = 'LIFE'
-        exchange = user_exchanges['farolillo']['hitbtc']
+        exchange = user_exchanges['farolillo']['hitbtc2']
         get_coin_symbols(coin, exchange)
 
     """
@@ -301,12 +568,12 @@ def get_current_price_usd(coin, exchange, prefer_double_conversion=False):
     Example:
         prefer_double_conversion = False
         coin = 'OMG'
-        exchange = user_exchanges['farolillo']['hitbtc']
+        exchange = user_exchanges['farolillo']['hitbtc2']
         get_current_price_usd(coin, exchange)
 
         prefer_double_conversion = True
         coin = 'OMG'
-        exchange = user_exchanges['farolillo']['hitbtc']
+        exchange = user_exchanges['farolillo']['hitbtc2']
         get_current_price_usd(coin, exchange)
 
     """
@@ -328,7 +595,7 @@ def get_current_price_usd(coin, exchange, prefer_double_conversion=False):
         for quote in usual_quote_currencies:
             if (coin + '/' + quote) in symbols:
               base_price  = get_current_price( (coin + '/' + quote), exchange )
-              quote_price = get_current_price( (quote + '/' + 'USD'), exchange )
+              quote_price = get_current_price( (quote + '/' + 'USDT'), exchange )
 
               return base_price * quote_price
 
@@ -338,7 +605,7 @@ def get_current_price_usd(coin, exchange, prefer_double_conversion=False):
         for quote in usual_quote_currencies:
             if (coin + '/' + quote) in symbols:
               base_price  = get_current_price( (coin + '/' + quote), exchange )
-              quote_price = get_current_price( (quote + '/' + 'USD'), exchange )
+              quote_price = get_current_price( (quote + '/' + 'USDT'), exchange )
 
               return base_price * quote_price
 
@@ -347,3 +614,123 @@ def get_current_price_usd(coin, exchange, prefer_double_conversion=False):
               return get_current_price( (coin + '/' + quote), exchange )
 
         return -1
+
+
+def get_holdings_cost(exchange):
+    """Get aggregated buy cost for every coin in balance.
+
+    Args:
+
+    Returns:
+
+    Example:
+        exchange = user_exchanges['farolillo']['hitbtc2']
+        holdings_cost = get_holdings_cost(exchange)
+
+    """
+
+    balance = get_balance(exchange)
+    balance_remaining = balance
+
+    buy_history = get_buy_history(exchange)
+
+    coin_cost = {coin: {} for coin in balance}
+    for trade in buy_history:
+        for coin in balance:
+            if coin == symbol_base(trade['symbol'], exchange.id) and balance_remaining[coin] > 0.0:
+                if trade['amount'] <= balance_remaining[coin]:
+                    valid_amount = trade['amount']
+                    balance_remaining[coin] -= valid_amount
+                    cost = trade['cost']
+                else:
+                    valid_amount = balance_remaining[coin]
+                    balance_remaining[coin] = 0.0
+                    cost = valid_amount * trade['price']
+
+                if not symbol_quote(trade['symbol'], exchange.id) in coin_cost[coin]:
+                    coin_cost[coin][symbol_quote(trade['symbol'], exchange.id)] = {'amount': valid_amount,
+                                                                                   'cost': cost,
+                                                                                   'first_buy': trade['timestamp']
+                                                                                  }
+                else:
+                    coin_cost[coin][symbol_quote(trade['symbol'], exchange.id)]['amount']    += valid_amount
+                    coin_cost[coin][symbol_quote(trade['symbol'], exchange.id)]['cost']      += cost
+                    coin_cost[coin][symbol_quote(trade['symbol'], exchange.id)]['first_buy']  = trade['timestamp']
+
+    coin_cost = {coin: coin_cost[coin] for coin in coin_cost if len(coin_cost[coin]) > 0}
+
+    for coin in coin_cost:
+        for quote in coin_cost[coin]:
+            # print(coin + '/' + quote)
+            coin_cost[coin][quote]['average_price'] = coin_cost[coin][quote]['cost'] / coin_cost[coin][quote]['amount']
+
+    return coin_cost
+
+
+
+def get_balance_norm_price_history(exchange, timeframe):
+    """
+    Example:
+        exchange = user_exchanges['farolillo']['hitbtc2']
+        timeframe = '1h'
+        normalized = get_balance_norm_price_history(exchange, timeframe)
+
+        import matplotlib.pyplot as plt
+        for symbol in normalized:
+            plt.plot( normalized[symbol]['date8061'], normalized[symbol]['price'])
+    """
+
+    coin_cost = get_holdings_cost(exchange)
+
+    normalized = {}
+    for coin in coin_cost:
+        for quote in coin_cost[coin]:
+            symbol = coin + '/' + quote
+            average_price = coin_cost[coin][quote]['average_price']
+            first_buy = coin_cost[coin][quote]['first_buy']
+            normalized[symbol] = norm_price_history(symbol, average_price, first_buy, timeframe, exchange)
+    return normalized
+
+
+def norm_price_history(symbol, average_price, first_buy, timeframe, exchange):
+    history_cursor = get_db_ohlcv(symbol, exchange.id, timeframe, first_buy, (current_millis() + 10e3))
+    history = cursor_to_list(history_cursor)
+
+    date8061 = [ row['date8061'] for row in history]
+    if date8061[0] > (first_buy + timeframe_to_millis(timeframe)):
+        print('ERR norm_price_history: First data logged is more recent than first_buy.')
+
+    close = [ row['ohlcv']['close'] for row in history]
+
+    norm_price = [value / average_price for value in close]
+
+    return {'date8061': date8061, 'price': close, 'norm_price': norm_price}
+
+
+
+#%%##########################################################################
+#                                 FLASK API                                 #
+#############################################################################
+
+#----------------------------------------------------------------------------
+# AUTHENTICATION
+#----------------------------------------------------------------------------
+
+auth = HTTPBasicAuth()
+""" Add @auth.login_required to a route/method definition to make it
+    password-protected.
+"""
+
+@auth.get_password
+def get_password(username):
+    if username == 'rob':
+        return 'bot'
+    return None
+
+@auth.error_handler
+def unauthorized():
+    return make_response(jsonify({'error': 'Unauthorized access'}), 401)
+
+
+
+

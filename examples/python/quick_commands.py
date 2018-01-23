@@ -14,19 +14,37 @@ ORBBIT_HOST = socket.gethostbyname( 'localhost' )
 DATAMANAGERPORT = ':5000'
 ORDERMANAGERPORT = ':5001'
 
+#%% get balance norm trade hist
+jsonreq = {'res':'balance_norm_price_history', 'params':{'user':'farolillo', 'exchange': 'hitbtc2'}}
+jsonreq = {'res':'balance_norm_price_history', 'params':{'user':'farolillo', 'exchange': 'hitbtc2', 'timeframe': '1h'}}
+r = requests.post('http://' + ORBBIT_HOST + ORDERMANAGERPORT + '/ordermanager/get/', json=jsonreq)
+trade_history = r.json()
+
+#%% get trade hist
+jsonreq = {'res':'trade_history', 'params':{'user':'farolillo', 'exchange': 'hitbtc2', 'symbol': 'XRP/USDT'}}
+jsonreq = {'res':'trade_history', 'params':{'user':'farolillo', 'exchange': 'hitbtc2'}}
+r = requests.post('http://' + ORBBIT_HOST + ORDERMANAGERPORT + '/ordermanager/get/', json=jsonreq)
+trade_history = r.json()
+print(trade_history)
+
+#%% get balance_usd
+jsonreq = {'res':'balance_usd', 'params':{'user':'linternita', 'exchange': 'bittrex'}}
+r = requests.post('http://' + ORBBIT_HOST + ORDERMANAGERPORT + '/ordermanager/get/', json=jsonreq)
+rjson = r.json()
+balance_usd = rjson['balance_usd']
+print(balance_usd)
+coins = balance_usd.keys()
+total_usd = rjson['total_usd']
+print(total_usd)
+
 #%% get balance
 jsonreq = {'res':'balance', 'params':{'user':'linternita', 'exchange': 'bittrex'}}
+jsonreq = {'res':'balance', 'params':{'user':'farolillo', 'exchange': 'hitbtc2'}}
 r = requests.post('http://' + ORBBIT_HOST + ORDERMANAGERPORT + '/ordermanager/get/', json=jsonreq)
 rjson = r.json()
 balance = rjson['balance']
 coins = balance.keys()
 print(balance)
-
-#%% get trade hist
-jsonreq = {'res':'trade_history', 'params':{'user':'linternita', 'exchange': 'bittrex'}}
-r = requests.post('http://' + ORBBIT_HOST + ORDERMANAGERPORT + '/ordermanager/get/', json=jsonreq)
-trade_history = r.json()
-print(trade_history)
 
 #%% Start fetchers
 r = requests.post('http://' + ORBBIT_HOST + DATAMANAGERPORT + '/datamanager/fetch/start')
@@ -40,7 +58,7 @@ ohlcv = r.json()
 print(len(ohlcv))
 
 #%% Get OHLCV
-jsonreq = {'res':'ohlcv', 'params':{'symbol':'BTC/USDT', 'exchange': 'hitbtc', 'timeframe':'1m'}}
+jsonreq = {'res':'ohlcv', 'params':{'symbol':'BTC/USDT', 'exchange': 'hitbtc2', 'timeframe':'1m'}}
 r = requests.post('http://' + ORBBIT_HOST + DATAMANAGERPORT + '/datamanager/get/', json=jsonreq)
 ohlcv = r.json()
 print(len(ohlcv))

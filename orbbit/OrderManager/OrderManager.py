@@ -6,8 +6,8 @@ import threading
 import queue
 import numpy as np
 import socket
-from   flask          import Flask, jsonify, abort, make_response, request
-from   flask_httpauth import HTTPBasicAuth
+from   flask      import Flask, jsonify, abort, make_response, request
+from   flask_cors import CORS
 import asyncio
 import ccxt.async as ccxt
 import pymongo
@@ -36,8 +36,6 @@ ORDERMANAGER_API_PORT = 5001
 #                              DATABASE SETUP                               #
 #############################################################################
 
-ordermanager_db = database_connection('ordermanager')
-
 
 
 
@@ -59,40 +57,19 @@ for user in user_info:
 #############################################################################
 
 #----------------------------------------------------------------------------
-# Flask App error funcs redefinition
+# Flask app error funcs redefinition
 #----------------------------------------------------------------------------
 
-app = Flask(__name__)
+ordermanager_flask_app = Flask(__name__)
+CORS(ordermanager_flask_app)
 
-@app.errorhandler(404)
+@ordermanager_flask_app.errorhandler(404)
 def not_found(error):
     return make_response(jsonify({'error': 'URL not found'}), 404)
 
-@app.errorhandler(400)
+@ordermanager_flask_app.errorhandler(400)
 def bad_request(error):
     return make_response(jsonify({'error': 'Bad request'}), 400)
-
-
-
-#----------------------------------------------------------------------------
-# AUTHENTICATION
-#----------------------------------------------------------------------------
-
-auth = HTTPBasicAuth()
-""" Add @auth.login_required to a route/method definition to make it
-    password-protected.
-"""
-
-@auth.get_password
-def get_password(username):
-    if username == 'rob':
-        return 'bot'
-    return None
-
-@auth.error_handler
-def unauthorized():
-    return make_response(jsonify({'error': 'Unauthorized access'}), 401)
-
 
 
 
@@ -103,7 +80,7 @@ def unauthorized():
 #   Route /ordermanager
 #----------------------------------------------------------------------------
 
-@app.route('/ordermanager', methods=['POST'])
+@ordermanager_flask_app.route('/ordermanager', methods=['POST'])
 def ordermanager_status():
     """ Get ordermanager status.
     Args:
@@ -120,7 +97,7 @@ def ordermanager_status():
 #   Route /ordermanager/get
 #----------------------------------------------------------------------------
 
-@app.route('/ordermanager/get', methods=['POST'])
+@ordermanager_flask_app.route('/ordermanager/get', methods=['POST'])
 def get():
     """ List ordermanager available data.
 
@@ -146,7 +123,7 @@ def get():
 #   Route /ordermanager/get/<command>
 #----------------------------------------------------------------------------
 
-@app.route('/ordermanager/get/', methods=['POST'])
+@ordermanager_flask_app.route('/ordermanager/get/', methods=['POST'])
 def get_commands():
     """ Serve data collected by the OrderManager block.
 
@@ -158,14 +135,9 @@ def get_commands():
             amount
             price
 
-    Note:
-        hitbtc exchange needs to merge fetchClosedOrders() with fetchMyTrades().
-        bittrex exchange needs to merge fetchOrders() + fetchOpenOrders().
-        binance won't allow to fetch them all at once, you have to iterate over your symbols.
-
     Example:
         get_resource = 'trade_history'
-        get_parameters = {'user': 'farolillo', 'exchange': 'hitbtc'}
+        get_parameters = {'user': 'farolillo', 'exchange': 'hitbtc2'}
 
         get_resource = 'trade_history'
         get_parameters = {'user': 'linternita', 'exchange': 'bittrex'}
@@ -174,7 +146,7 @@ def get_commands():
         get_parameters = {'user': 'linternita', 'exchange': 'bittrex'}
 
         get_resource = 'balance_usd'
-        get_parameters = {'user': 'farolillo', 'exchange': 'hitbtc'}
+        get_parameters = {'user': 'farolillo', 'exchange': 'hitbtc2'}
 
     """
     # print('RECEIVED REQ /ordermanager/get/')
@@ -186,74 +158,59 @@ def get_commands():
 
     # Resource 'balance'
     if get_resource == 'balance':
-        user = get_parameters['user']
+        user        = get_parameters['user']
         exchange_id = get_parameters['exchange']
 
-        exchange = user_exchanges[user][exchange_id]
-
-        balance = get_balance(exchange)
+        balance = get_balance(user_exchanges[user][exchange_id])
 
         return jsonify({'balance': balance})
 
 
     # Resource 'balance_usd'
     if get_resource == 'balance_usd':
-        user = get_parameters['user']
+        user        = get_parameters['user']
         exchange_id = get_parameters['exchange']
 
-        exchange = user_exchanges[user][exchange_id]
-
-        balance = get_balance(exchange)
-
-        balance_usd = [{coin: get_current_price_usd(coin, exchange) * balance[coin]} for coin in balance]
-        total_usd = sum([list(coin_balance.values())[0] for coin_balance in balance_usd])
+        balance_usd, total_usd = get_balance_usd(user_exchanges[user][exchange_id])
 
         return jsonify({'balance_usd': balance_usd, 'total_usd': total_usd})
 
 
     # Resource 'trade_history'
     elif get_resource == 'trade_history':
-        user = get_parameters['user']
+        user        = get_parameters['user']
         exchange_id = get_parameters['exchange']
 
-        trade_history = []
-
-        if exchange_id == 'hitbtc':
-            api_my_trades = user_exchanges[user][exchange_id].fetchMyTrades(limit=1000)
-            trade_history = api_my_trades
-
-        elif exchange_id == 'hitbtc':
-            api_orders = user_exchanges[user][exchange_id].fetchOrders(limit=1000)
-            trade_history = api_orders
-
+        if 'symbol' in get_parameters:
+            symbol = get_parameters['symbol']
         else:
-            return jsonify({'error': 'Trade history not available for this exchange.'})
+            symbol = None
+
+
+        trade_history = get_trade_history(user_exchanges[user][exchange_id], symbol)
 
         return jsonify({'trade_history': trade_history})
 
 
+    # Resource 'balance_norm_price_history'
+    elif get_resource == 'balance_norm_price_history':
+        user        = get_parameters['user']
+        exchange_id = get_parameters['exchange']
+        timeframe   = get_parameters['timeframe']
+
+        balance_norm_price_history = get_balance_norm_price_history(user_exchanges[user][exchange_id], timeframe)
+
+        return jsonify({'balance_norm_price_history': balance_norm_price_history})       
+
+
     # Resource 'open_orders'
     elif get_resource == 'open_orders':
-        user = get_parameters['user']
+        user        = get_parameters['user']
         exchange_id = get_parameters['exchange']
 
-        open_orders = []
-
-        if exchange_id == 'hitbtc':
-            api_closed_orders = user_exchanges[user][exchange_id].fetchClosedOrders(limit=1000)
-            open_orders = [order for order in api_closed_orders if order['status'] == 'open']
-
-        elif exchange_id == 'hitbtc':
-            api_open_orders = user_exchanges[user][exchange_id].fetchOpenOrders(limit=1000)
-            open_orders = api_open_orders
-            # create one and cancel, see what happens
-
-        else:
-            return jsonify({'error': 'Open orders not available for this exchange.'})
+        open_orders = get_open_orders(user_exchanges[user][exchange_id])
 
         return jsonify({'open_orders': open_orders})
-
-
 
     else:
         return jsonify({'error': 'Resource not found.'})
@@ -272,7 +229,7 @@ class ordermanager_API (threading.Thread):
 
     def run(self):
         print('OrderManager API STARTED with threadID ' + self.name)
-        app.run(host=ORDERMANAGER_API_IP, port=ORDERMANAGER_API_PORT, debug=False)
+        ordermanager_flask_app.run(host=ORDERMANAGER_API_IP, port=ORDERMANAGER_API_PORT, debug=False)
         print('OrderManager API STOPPED with threadID ' + self.name)
 
 

@@ -26,7 +26,7 @@ r = requests.post('http://' + ORBBIT_HOST + ':5000/datamanager/fetch/start')
 time.sleep(5)
 
 #%% request subscription
-jsonreq = {'res':'macd', 'params':{'symbol':'BTC/USDT', 'exchange': 'hitbtc', 'timeframe':'1m', 'ema_fast': 5, 'ema_slow': 12}}
+jsonreq = {'res':'macd', 'params':{'symbol':'BTC/USDT', 'exchange': 'hitbtc2', 'timeframe':'1m', 'ema_fast': 5, 'ema_slow': 12}}
 r = requests.post('http://' + ORBBIT_HOST + ':5000/datamanager/subscribe/add', json=jsonreq)
 response_dict = r.json()
 print(response_dict)
