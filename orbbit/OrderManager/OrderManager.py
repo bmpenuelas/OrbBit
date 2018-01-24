@@ -168,10 +168,11 @@ def get_commands():
 
     # Resource 'balance_usd'
     if get_resource == 'balance_usd':
-        user        = get_parameters['user']
-        exchange_id = get_parameters['exchange']
+        user          = get_parameters['user']
+        exchange_id   = get_parameters['exchange']
+        min_usd_value = get_parameters['min_usd_value'] if 'min_usd_value' in get_parameters else 0.0
 
-        balance_usd, total_usd = get_balance_usd(user_exchanges[user][exchange_id])
+        balance_usd, total_usd, balance = get_balance_usd(user_exchanges[user][exchange_id])
 
         return jsonify({'balance_usd': balance_usd, 'total_usd': total_usd})
 
@@ -180,12 +181,7 @@ def get_commands():
     elif get_resource == 'trade_history':
         user        = get_parameters['user']
         exchange_id = get_parameters['exchange']
-
-        if 'symbol' in get_parameters:
-            symbol = get_parameters['symbol']
-        else:
-            symbol = None
-
+        symbol      = get_parameters['symbol'] if 'symbol' in get_parameters else None
 
         trade_history = get_trade_history(user_exchanges[user][exchange_id], symbol)
 
@@ -194,11 +190,12 @@ def get_commands():
 
     # Resource 'balance_norm_price_history'
     elif get_resource == 'balance_norm_price_history':
-        user        = get_parameters['user']
-        exchange_id = get_parameters['exchange']
-        timeframe   = get_parameters['timeframe']
+        user          = get_parameters['user']
+        exchange_id   = get_parameters['exchange']
+        timeframe     = get_parameters['timeframe']
+        min_usd_value = get_parameters['min_usd_value'] if 'min_usd_value' in get_parameters else 0.0
 
-        balance_norm_price_history = get_balance_norm_price_history(user_exchanges[user][exchange_id], timeframe)
+        balance_norm_price_history = get_balance_norm_price_history(user_exchanges[user][exchange_id], timeframe, min_usd_value)
 
         return jsonify({'balance_norm_price_history': balance_norm_price_history})       
 

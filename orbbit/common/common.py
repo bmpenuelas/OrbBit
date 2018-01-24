@@ -402,13 +402,16 @@ def get_balance(exchange, symbol=None):
 
 
 
-def get_balance_usd(exchange, symbol=None):
+def get_balance_usd(exchange, symbol=None, min_usd_value=0.0):
     balance = get_balance(exchange, symbol)
 
     balance_usd = {coin: get_current_price_usd(coin, exchange) * balance[coin] for coin in balance}
     total_usd = sum(list(balance_usd.values()))
+    if min_usd_value:
+        balance_usd = {coin: balance_usd[coin] for coin in balance_usd if balance_usd[coin] > min_usd_value}
+        balance     = {coin: balance[coin] for coin in balance_usd}
 
-    return balance_usd, total_usd
+    return balance_usd, total_usd, balance
 
 
 
@@ -616,7 +619,7 @@ def get_current_price_usd(coin, exchange, prefer_double_conversion=False):
         return -1
 
 
-def get_holdings_cost(exchange):
+def get_holdings_cost(exchange, min_usd_value=0.0):
     """Get aggregated buy cost for every coin in balance.
 
     Args:
@@ -629,7 +632,12 @@ def get_holdings_cost(exchange):
 
     """
 
-    balance = get_balance(exchange)
+    if min_usd_value:
+        balance_usd, total_usd, balance = get_balance_usd(exchange, min_usd_value=min_usd_value)
+    else:
+        balance = get_balance(exchange)
+
+
     balance_remaining = balance
 
     buy_history = get_buy_history(exchange)
@@ -668,7 +676,7 @@ def get_holdings_cost(exchange):
 
 
 
-def get_balance_norm_price_history(exchange, timeframe):
+def get_balance_norm_price_history(exchange, timeframe, min_usd_value=0.0):
     """
     Example:
         exchange = user_exchanges['farolillo']['hitbtc2']
@@ -680,7 +688,7 @@ def get_balance_norm_price_history(exchange, timeframe):
             plt.plot( normalized[symbol]['date8061'], normalized[symbol]['price'])
     """
 
-    coin_cost = get_holdings_cost(exchange)
+    coin_cost = get_holdings_cost(exchange, min_usd_value)
 
     normalized = {}
     for coin in coin_cost:
@@ -689,6 +697,16 @@ def get_balance_norm_price_history(exchange, timeframe):
             average_price = coin_cost[coin][quote]['average_price']
             first_buy = coin_cost[coin][quote]['first_buy']
             normalized[symbol] = norm_price_history(symbol, average_price, first_buy, timeframe, exchange)
+
+    max_len = 0
+    for symbol in normalized:
+        if len(normalized[symbol]['date8061']) > max_len:
+            max_len = len(normalized[symbol]['date8061'])
+
+    for symbol in normalized:
+        for field in normalized[symbol]:
+            normalized[symbol][field] = [None] * (max_len - len(normalized[symbol][field])) + normalized[symbol][field]
+
     return normalized
 
 
