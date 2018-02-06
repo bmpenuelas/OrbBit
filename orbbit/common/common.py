@@ -3,14 +3,25 @@
 import os
 import sys
 import time
-from   datetime import timedelta
-from   flask import make_response, request, current_app
-from   functools import update_wrapper
+from   datetime       import timedelta
+from   flask          import make_response, request, current_app
+from   functools      import update_wrapper
 import json
 import pymongo
 from   pkg_resources  import resource_filename
 import ccxt
 from   flask_httpauth import HTTPBasicAuth
+
+
+#%%##########################################################################
+#                          CONFIGURATION PARAMETERS                         #
+#############################################################################
+
+default_fetch_timeframes = ['1m', '1h']
+
+typical_quote_currencies = ['USDT', 'BTC', 'ETH']
+
+typical_exchanges = ['hitbtc2', 'bittrex', 'binance', 'kraken']
 
 
 #%%##########################################################################
@@ -97,7 +108,9 @@ def res_params_to_stream_id(res, params):
               'ema_slow': 5,
              }
     res_params_to_stream_id(res, params)
+
     """
+
     for valid_resources in valid_subscribtion_resources.values():
         for val in valid_resources:
             if val == res:
@@ -140,6 +153,7 @@ def dict_from_key(route):
             db = db_connection[database_name]
             db.authenticate(db_key[database_name]['user'], db_key[database_name]['password'])
             db_connection.drop_database(database_name)
+
     """
 
 def database_connection(database_name):
@@ -179,6 +193,7 @@ def get_database_info(database_name, info):
         database_name = 'ordermanager'
         info = 'user_info'
         get_database_info(database_name, info)
+
     """
 
     db_conn = database_connection(database_name)
@@ -191,33 +206,23 @@ def get_database_info(database_name, info):
         if database_name == 'datamanager':
             new_documents = [
                 {'fetching_symbols':
-                    {'hitbtc2': {'DASH/USDT':  ['1m', '1h',],
-                                 'OMG/BTC':    ['1m', '1h',],
-                                 'ETC/USDT':   ['1m', '1h',],
-                                 'BTC/USDT':   ['1m', '1h',],
-                                 'TRX/USDT':   ['1m', '1h',],
-                                 'XEM/USDT':   ['1m', '1h',],
-                                 'BCH/USDT':   ['1m', '1h',],
-                                 'STRAT/USDT': ['1m', '1h',],
-                                 'XRP/USDT':   ['1m', '1h',],
-                                 'PAY/BTC':    ['1m', '1h',],
-                                 'XMR/USDT':   ['1m', '1h',],
-                                 'ETH/USDT':   ['1m', '1h',],
-                                 'NEO/USDT':   ['1m', '1h',],
+                    {'hitbtc2': {'BTC/USDT':   default_fetch_timeframes,
+                                 'ETH/USDT':   default_fetch_timeframes,
                                 },
-                     'bittrex': {'BTC/USDT': ['1m', '1h',],
+                     'bittrex': {'BTC/USDT':   default_fetch_timeframes,
+                                 'ETH/USDT':   default_fetch_timeframes,
                                 },
                     }
                 },
                 {'fetch_exchanges':
-                    ['hitbtc2', 'bittrex', 'binance', 'kraken']
+                    typical_exchanges
                 },
             ]
         elif database_name == 'ordermanager':
             new_documents = [
                 {   'user_info': {
                         'farolillo': {
-                            'exchanges': ['hitbtc2',],
+                            'exchanges': ['hitbtc2', 'binance'],
                         },
                         'linternita': {
                             'exchanges': ['bittrex',],
@@ -234,6 +239,40 @@ def update_database_info(database_name, key, value):
     info_connection = database_info_connection( database_connection(database_name) )
     info_connection.update_one( {key: {'$exists': True}}, {"$set": {key: value, }}, upsert=True )
 
+
+
+
+def add_fetching_symbol(exchange_id, symbol, timeframe):
+    """Add a fetcher to the db.
+
+    Example:
+        exchange_id = 'bittrex'
+        symbol = 'BTC/USDT'
+        timeframe = '1m'
+        fetching_symbols = add_fetching_symbol(exchange_id, symbol, timeframe)
+
+    Args:
+
+    Returns:
+
+    """
+
+    database_name = 'datamanager'
+
+    fetching_symbols = get_database_info(database_name, 'fetching_symbols')
+
+    if not timeframe in ( fetching_symbols.get(exchange_id, {}) ).get(symbol, {}):
+        is_new = 1
+
+        fetching_symbols.setdefault(exchange_id, {})
+        fetching_symbols[exchange_id].setdefault(symbol, [])
+        fetching_symbols[exchange_id][symbol].append(timeframe)
+
+
+        update_database_info('datamanager', 'fetching_symbols', fetching_symbols)
+        print('Adding fetcher for ' + symbol + ' ' + timeframe + ' @ ' + exchange_id)
+
+    return fetching_symbols
 
 
 
@@ -255,6 +294,7 @@ def get_db_ohlcv(symbol, exchange_id, timeframe, from_millis, to_millis):
         symbol, timeframe, from_millis, to_millis
     Returns:
         pymongo cursor pointing to the docs
+
     """
 
     projection = {'date8061': True, 'ohlcv': True}
@@ -372,7 +412,7 @@ def symbol_quote(symbol, exchange_id):
 
 
 
-def get_balance(exchange, symbol=None):
+def get_balance(exchange, coin=None, add_missing_fetchers=True):
     retry = 3
     retry_interval = 0.2
 
@@ -389,11 +429,20 @@ def get_balance(exchange, symbol=None):
 
     totals = api_balance['total']
 
-    balance = {coin:totals[coin] for coin in totals if totals[coin] > 0.0 }
+    balance = {holding_coin:totals[holding_coin] for holding_coin in totals if totals[holding_coin] > 0.0 }
 
-    if symbol:
-        if symbol in balance:
-            return balance[symbol]
+    if add_missing_fetchers:
+        for timeframe in default_fetch_timeframes:
+            for holding_coin in balance:
+                possible_symbols = [holding_coin + '/' + quote for quote in typical_quote_currencies]
+                symbols = [symbol for symbol in possible_symbols if symbol_os(symbol, exchange.id) in exchange.symbols]
+                for symbol in symbols:
+                    add_fetching_symbol(exchange.id, symbol, timeframe)
+
+
+    if coin:
+        if coin in balance:
+            return balance[coin]
         else:
             return 0.0
 
@@ -402,8 +451,8 @@ def get_balance(exchange, symbol=None):
 
 
 
-def get_balance_usd(exchange, symbol=None, min_usd_value=0.0):
-    balance = get_balance(exchange, symbol)
+def get_balance_usd(exchange, coin=None, min_usd_value=0.0):
+    balance = get_balance(exchange, coin)
 
     balance_usd = {coin: get_current_price_usd(coin, exchange) * balance[coin] for coin in balance}
     total_usd = sum(list(balance_usd.values()))
@@ -433,6 +482,10 @@ def get_trade_history(exchange, symbol=None):
             amount
             price
 
+    Example:
+        exchange = user_exchanges['farolillo']['binance']
+        get_trade_history(exchange)
+
     """
 
     trade_history = []
@@ -445,11 +498,19 @@ def get_trade_history(exchange, symbol=None):
         api_orders = exchange.fetchOrders(limit=1000)
         trade_history = api_orders
 
+    elif exchange.id == 'binance':
+        coin = symbol_base(symbol, exchange.id) if symbol else None
+        balance = get_balance(exchange, coin)
+        for holding_coin in balance:
+            possible_symbols = [holding_coin + '/' + quote for quote in typical_quote_currencies if (holding_coin + '/' + quote) in exchange.symbols]
+            for next_symbol in possible_symbols:
+                api_my_trades = exchange.fetchMyTrades(symbol=next_symbol, limit=1000)
+                trade_history.append(api_my_trades)
+
     else:
         return -1
 
     if symbol:
-        print(trade_history)
         return [trade for trade in trade_history if read_symbol_os(trade['symbol'], exchange.id) == symbol]
     else:
         return trade_history
@@ -714,13 +775,18 @@ def norm_price_history(symbol, average_price, first_buy, timeframe, exchange):
     history_cursor = get_db_ohlcv(symbol, exchange.id, timeframe, first_buy, (current_millis() + 10e3))
     history = cursor_to_list(history_cursor)
 
-    date8061 = [ row['date8061'] for row in history]
-    if date8061[0] > (first_buy + timeframe_to_millis(timeframe)):
-        print('ERR norm_price_history: First data logged is more recent than first_buy.')
+    if len(history) > 0:
+        date8061 = [ row['date8061'] for row in history]
+        if date8061[0] > (first_buy + timeframe_to_millis(timeframe)):
+            print('ERR norm_price_history: First data logged is more recent than first_buy.')
 
-    close = [ row['ohlcv']['close'] for row in history]
+        close = [ row['ohlcv']['close'] for row in history]
 
-    norm_price = [value / average_price for value in close]
+        norm_price = [value / average_price for value in close]
+
+    else:
+        print('ERR norm_price_history ' + symbol)
+        norm_price = []
 
     return {'date8061': date8061, 'price': close, 'norm_price': norm_price}
 

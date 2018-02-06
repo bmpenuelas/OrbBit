@@ -135,8 +135,8 @@ class fetch_thread_ohlcv(threading.Thread):
         now = current_millis()
         nxt_fetch = now - (now % timeframe_to_millis(self.params['timeframe']))
 
-        data_limit = 1000
-        fill_from = now - timeframe_to_millis(self.params['timeframe']) * data_limit
+        data_limit = min([1000, self.exchange.rateLimit]) - 1
+        fill_from = int(now - timeframe_to_millis(self.params['timeframe']) * data_limit)
 
         filled = fill_ohlcv(self.params['symbol'], self.params['exchange'], self.params['timeframe'], fill_from)
         if filled: print('Filled ' + str(filled) + ' missing entries in ' + self.params['symbol'] +' @ '+ self.params['exchange'] +' '+ self.params['timeframe'])
@@ -148,7 +148,7 @@ class fetch_thread_ohlcv(threading.Thread):
             while not(fetch_from_API_success):
                 try:
                     # print('Exchange query for ' + self.params['symbol'] +' '+ self.params['timeframe'])
-                    ohlcv = self.exchange.fetch_ohlcv(symbol_os(self.params['symbol'], self.exchange_id), self.params['timeframe'], nxt_fetch)
+                    ohlcv = self.exchange.fetch_ohlcv(symbol_os(self.params['symbol'], self.exchange_id), self.params['timeframe'], int(nxt_fetch))
                     fetch_from_API_success = 1
                 except:
                     print('ERR ' + self.exchange_id + ' query for ' + self.params['symbol'] +' '+ self.params['timeframe'])
@@ -183,24 +183,24 @@ def fill_ohlcv(symbol, exchange_id, timeframe, from_millis=0):
 
     Args:
         symbol, timeframe, from_millis: See fetch_thread_ohlcv.
-        
+
     Returns:
         filled: gaps successfully filled.
         missing: gaps that could not be filled.
 
     Example:
         symbol = 'BTC/USDT'
-        exchange_id = 'hitbtc2'
+        exchange_id = 'binance'
         timeframe = '1m'
         from_millis = current_millis() - timeframe_to_millis(timeframe) * 1000
         fill_ohlcv(symbol, exchange_id, timeframe, from_millis)
 
     """
 
-    data_limit = 1000
     retry_on_xchng_err_interval = 1
 
     exchange = exchanges[exchange_id]
+    data_limit = min([1000, exchange.rateLimit]) - 1
 
     symbol_db = symbol.replace('/', '_')
     collection_name = exchange_id + '_' + symbol_db
@@ -212,7 +212,6 @@ def fill_ohlcv(symbol, exchange_id, timeframe, from_millis=0):
 
     from_parts = [from_millis + i * data_limit for i in range(fill_parts)]
 
-
     filled = 0
 
     for from_part in from_parts:
@@ -223,15 +222,21 @@ def fill_ohlcv(symbol, exchange_id, timeframe, from_millis=0):
                 ohlcv = exchange.fetch_ohlcv(symbol_os(symbol, exchange_id), timeframe, since=from_part, limit=data_limit)
                 fetch_from_API_success = 1
             except:
-                print('ERR Exchange - Fill OHLCV ' + symbol + ' @ ' + exchange_id + ' ' + timeframe)
+                print('ERR Exchange - Fill OHLCV ' + symbol + ' @ ' + exchange_id + ' ' + timeframe + ' from ' + str(from_part) + ' n ' + str(data_limit))
                 time.sleep(retry_on_xchng_err_interval)
 
         new_documents = [candle_to_document(candle, timeframe) for candle in ohlcv]
-        try:
-            insertion_result = collection.insert_many(new_documents, ordered = False )
-            filled += len(insertion_result.inserted_ids)
-        except pymongo.errors.BulkWriteError as ex:
-            filled += ex.details['nInserted']
+
+        inserted = 0
+        while not inserted:
+          try:
+              insertion_result = collection.insert_many(new_documents, ordered = False )
+              filled += len(insertion_result.inserted_ids)
+              inserted = 1
+          except pymongo.errors.BulkWriteError as ex:
+              filled += ex.details['nInserted']
+          except pymongo.errors.AutoReconnect as ex:
+              pass
 
     # \todo chech for holes in data
     return filled
@@ -260,7 +265,9 @@ class transform_thread_macd(threading.Thread):
         ema_slow (double)
         cross (1 / 0)
         rising (1 / 0)
+
     """
+
     def __init__(self, stream_parameters):
         threading.Thread.__init__(self)
         parameters = stream_parameters
@@ -297,9 +304,10 @@ class transform_thread_macd(threading.Thread):
 
 
         history_vals = close[-self.ema_slow :]
+        ema_fast_val = EMA_history(self.ema_fast, history_vals[-self.ema_fast :])[-1]
+        ema_slow_val = EMA_history(self.ema_slow, history_vals)[-1]
 
-        macd_prev = EMA_tick(self.ema_fast, history_vals[-self.ema_fast :])  \
-                    - EMA_tick(self.ema_slow, history_vals)
+        macd_prev = ema_fast_val - ema_slow_val
 
 
         while True:
@@ -309,11 +317,11 @@ class transform_thread_macd(threading.Thread):
             new_date8061 = new_ohlcv['date8061']
 
             # calc EMA and MACD
-            history_vals = history_vals[1 :]
-            history_vals.append(new_close)
+            ema_fast_val_previous = ema_fast_val
+            ema_slow_val_previous = ema_slow_val
 
-            ema_fast_val = EMA_tick(self.ema_fast, history_vals[-self.ema_fast :])
-            ema_slow_val = EMA_tick(self.ema_slow, history_vals)
+            ema_fast_val = EMA_tick(self.ema_fast, new_close, ema_fast_val_previous)
+            ema_slow_val = EMA_tick(self.ema_slow, new_close, ema_slow_val_previous)
 
             macd = ema_fast_val - ema_slow_val
 
@@ -336,7 +344,6 @@ class transform_thread_macd(threading.Thread):
                                      },
                          'ohlcv':    new_ohlcv['ohlcv']
                         }
-            # macd_dict = {'aaa': 123}
 
             macd_prev = macd
             self.ohlcv_queue.task_done()
@@ -428,26 +435,12 @@ def fetch_commands(command):
         symbol      = params['symbol']
         timeframe   = params['timeframe']
 
-        fetching_symbols = get_database_info('datamanager', 'fetching_symbols')
-
-
-        is_new = 1
-        if exchange_id in fetching_symbols:
-            if symbol in fetching_symbols[exchange_id]:
-                if timeframe in fetching_symbols[exchange_id][symbol]:
-                    is_new = 0
-                else:
-                    fetching_symbols[exchange_id][symbol].append(timeframe)
-            else:
-                fetching_symbols[exchange_id][symbol] = [timeframe]
-        else:
-            fetching_symbols[exchange_id] = {symbol: [timeframe]}
+        fetching_symbols, is_new = add_fetching_symbol(exchange_id, symbol, timeframe)
 
         if is_new:
-            fetching_symbols[symbol].append(timeframe)
-            update_database_info('datamanager', 'fetching_symbols', fetching_symbols)
             new_symbol_fetcher = fetch_thread_ohlcv(params)
             new_symbol_fetcher.start()
+
 
         return jsonify({'fetching_symbols': fetching_symbols})
 
@@ -829,9 +822,9 @@ def start_API():
     Args:
 
     Returns:
-    
+
     """
-    
+
     print("Starting DataManager API Server.")
     thread_DataManager_API.start()
 
@@ -841,3 +834,4 @@ def start_API():
 #----------------------------------------------------------------------------
 if __name__ == '__main__':
     print("DataManager in script mode.")
+    start_API()

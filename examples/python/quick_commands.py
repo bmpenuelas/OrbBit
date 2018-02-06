@@ -14,21 +14,14 @@ ORBBIT_HOST = socket.gethostbyname( 'localhost' )
 DATAMANAGERPORT = ':5000'
 ORDERMANAGERPORT = ':5001'
 
-#%% get balance norm trade hist
-jsonreq = {'res':'balance_norm_price_history', 'params':{'user':'farolillo', 'exchange': 'hitbtc2'}}
-jsonreq = {'res':'balance_norm_price_history', 'params':{'user':'farolillo', 'exchange': 'hitbtc2', 'timeframe': '1h'}}
-r = requests.post('http://' + ORBBIT_HOST + ORDERMANAGERPORT + '/ordermanager/get/', json=jsonreq)
-trade_history = r.json()
-
-#%% get trade hist
-jsonreq = {'res':'trade_history', 'params':{'user':'farolillo', 'exchange': 'hitbtc2', 'symbol': 'XRP/USDT'}}
-jsonreq = {'res':'trade_history', 'params':{'user':'farolillo', 'exchange': 'hitbtc2'}}
-r = requests.post('http://' + ORBBIT_HOST + ORDERMANAGERPORT + '/ordermanager/get/', json=jsonreq)
-trade_history = r.json()
-print(trade_history)
+#%% Start fetchers
+r = requests.post('http://' + ORBBIT_HOST + DATAMANAGERPORT + '/datamanager/fetch/start')
+print(r.json())
+time.sleep(10)
 
 #%% get balance_usd
 jsonreq = {'res':'balance_usd', 'params':{'user':'linternita', 'exchange': 'bittrex'}}
+jsonreq = {'res':'balance_usd', 'params':{'user':'farolillo', 'exchange': 'binance', }}
 r = requests.post('http://' + ORBBIT_HOST + ORDERMANAGERPORT + '/ordermanager/get/', json=jsonreq)
 rjson = r.json()
 balance_usd = rjson['balance_usd']
@@ -46,10 +39,17 @@ balance = rjson['balance']
 coins = balance.keys()
 print(balance)
 
-#%% Start fetchers
-r = requests.post('http://' + ORBBIT_HOST + DATAMANAGERPORT + '/datamanager/fetch/start')
-print(r.json())
-time.sleep(10)
+#%% get balance norm trade hist
+jsonreq = {'res':'balance_norm_price_history', 'params':{'user':'farolillo', 'exchange': 'hitbtc2', 'timeframe': '1h', 'min_usd_value': 3.0}}
+r = requests.post('http://' + ORBBIT_HOST + ORDERMANAGERPORT + '/ordermanager/get/', json=jsonreq)
+trade_history = r.json()
+
+#%% get trade hist
+jsonreq = {'res':'trade_history', 'params':{'user':'farolillo', 'exchange': 'hitbtc2', 'symbol': 'XRP/USDT'}}
+jsonreq = {'res':'trade_history', 'params':{'user':'farolillo', 'exchange': 'hitbtc2'}}
+r = requests.post('http://' + ORBBIT_HOST + ORDERMANAGERPORT + '/ordermanager/get/', json=jsonreq)
+trade_history = r.json()
+print(trade_history)
 
 #%% Get OHLCV
 jsonreq = {'res':'ohlcv', 'params':{'symbol':'BTC/USDT', 'exchange': 'bittrex', 'timeframe':'1m'}}
@@ -105,7 +105,7 @@ r = requests.post('http://' + ORBBIT_HOST + DATAMANAGERPORT + '/datamanager')
 print(r.json())
 
 #%% Ordermanager get
-r = requests.post('http://127.0.0.1:5001/datamanager/get')
+r = requests.post('http://127.0.0.1:5001/ordermanager/get')
 print(r.json())
 
 #%% Start spyder (cli)
@@ -115,6 +115,4 @@ activate orb_conda
 spyder
 
 #%%
-
-
 

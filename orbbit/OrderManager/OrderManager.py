@@ -112,10 +112,7 @@ def get():
 
     # \todo List of available data, fetched and processed
 
-    # print('RECEIVED REQ /ordermanager/get')
-    # print(request.json)
-
-    return jsonify({'balance': {'STRAT': 4.57623799, 'BTC': 4e-08, 'QTUM': 2.0, 'OMG': 9.05145261, 'EMC2': 104.84758895, 'WAVES': 10.48232595, 'PTOY': 151.82511483, 'ETH': 0.03701968, 'USDT': 0.00286782}})
+    return jsonify({'valid_resources': ['balance', 'balance_usd', 'trade_history', 'balance_norm_price_history', 'open_orders']})
 
 
 
@@ -148,7 +145,9 @@ def get_commands():
         get_resource = 'balance_usd'
         get_parameters = {'user': 'farolillo', 'exchange': 'hitbtc2'}
 
+    
     """
+
     # print('RECEIVED REQ /ordermanager/get/')
     # print(request.json)
 
@@ -159,9 +158,23 @@ def get_commands():
     # Resource 'balance'
     if get_resource == 'balance':
         user        = get_parameters['user']
-        exchange_id = get_parameters['exchange']
+        exchange_id = get_parameters.get('exchange', None)
 
-        balance = get_balance(user_exchanges[user][exchange_id])
+        if exchange_id:
+            exchange_list = [ user_exchanges[user][exchange_id] ]
+        else:
+            exchange_list = [user_exchanges[user][exchange] for exchange in user_exchanges[user]]
+            print(user_exchanges[user])
+
+
+        total_balance = {}
+        for exchange in exchange_list:
+            balance = get_balance(exchange)
+            for coin in balance:
+                if coin in total_balance:
+                    total_balance[coin] += balance[coin]
+                else:
+                    total_balance[coin] = balance[coin]
 
         return jsonify({'balance': balance})
 
@@ -170,7 +183,7 @@ def get_commands():
     if get_resource == 'balance_usd':
         user          = get_parameters['user']
         exchange_id   = get_parameters['exchange']
-        min_usd_value = get_parameters['min_usd_value'] if 'min_usd_value' in get_parameters else 0.0
+        min_usd_value = get_parameters.get('min_usd_value', 0.0)
 
         balance_usd, total_usd, balance = get_balance_usd(user_exchanges[user][exchange_id])
 
@@ -180,10 +193,14 @@ def get_commands():
     # Resource 'trade_history'
     elif get_resource == 'trade_history':
         user        = get_parameters['user']
-        exchange_id = get_parameters['exchange']
-        symbol      = get_parameters['symbol'] if 'symbol' in get_parameters else None
+        exchange_id = get_parameters['exchange'] if 'exchange' in get_parameters else None
+        symbol      = get_parameters['symbol']   if 'symbol'   in get_parameters else None
 
-        trade_history = get_trade_history(user_exchanges[user][exchange_id], symbol)
+        if exchange_id:
+            trade_history = get_trade_history(user_exchanges[user][exchange_id], symbol)
+        else:
+            for exchange_id in user_exchanges[user]:
+                trade_history = get_trade_history(user_exchanges[user][exchange_id], symbol)
 
         return jsonify({'trade_history': trade_history})
 
@@ -193,7 +210,7 @@ def get_commands():
         user          = get_parameters['user']
         exchange_id   = get_parameters['exchange']
         timeframe     = get_parameters['timeframe']
-        min_usd_value = get_parameters['min_usd_value'] if 'min_usd_value' in get_parameters else 0.0
+        min_usd_value = get_parameters.get('min_usd_value', 0.0)
 
         balance_norm_price_history = get_balance_norm_price_history(user_exchanges[user][exchange_id], timeframe, min_usd_value)
 
@@ -240,7 +257,9 @@ def start_API():
     Args:
 
     Returns:
+
     """
+
     print("Starting OrderManager API Server.")
     thread_ordermanager_API.start()
 

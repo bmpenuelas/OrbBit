@@ -10,37 +10,38 @@ import numpy as np
 # EMA
 #----------------------------------------------------------------------------
 
-def EMA_tick(window_size, values):
+def EMA_tick(n_periods, current_value, previous_ema):
     """ EMA one value at a time.
 
     Args:
-        window_size (int) EMA sample number
-        values (list) len must be equal to window_size
+        n_periods (int) EMA sample number
+        current_value
+
     Returns:
         EMA (double) current EMA value
+
     """
-    if len(values) != window_size:
-        raise ValueError('Value len and window_size do not match.')
 
-    weights = np.exp(np.linspace(-1., 0., window_size))
-    weights /= weights.sum()
-    a =  np.convolve(values, weights, mode='full')[:len(values)]
-    return a[-1]
+    most_recent_weight = 2 / (n_periods + 1)
+    return (current_value - previous_ema) * most_recent_weight + previous_ema
 
 
-def EMA_history(window_size, values):
+def EMA_history(n_periods, values):
     """ EMA for complete history.
     
     Args:
-        window_size (int) EMA sample number
-        values (list) len must be greater than window_size
+        n_periods (int) EMA sample number
+        values (list) len must be greater than n_periods
+
     Returns:
         EMA (array double) complete EMA history
+
     """
-    weights = np.exp(np.linspace(-1., 0., window_size))
-    weights /= weights.sum()
-    a =  np.convolve(values, weights, mode='full')[:len(values)]
-    a[:window_size] = a[window_size]
-    return a
+
+    ema = [values[0]]
+    for i in range(1,len(values)):
+      ema.append( EMA_tick(n_periods, values[i], ema[i-1]) )
+
+    return ema
 
 

@@ -49,15 +49,22 @@ def init_bot():
 
 
 #############################################################################
+#                                  GLOBALS                                  #
+#############################################################################
+
+active_chats = set()
+
+
+
+
+
+#############################################################################
 #                             EXAMPLE HANDLERS                              #
 #############################################################################
 
-def foo():
-    print("FOO")
-
-
 def command_start(bot, update):
-    bot.send_message(chat_id=update.message.chat_id, text="Dame amorsito.")
+    bot.send_message(chat_id=update.message.chat_id, text="You are now subscribed to signal alerts.")
+    active_chats.add(update.message.chat_id)
 
 def add_start_handler():
     start_handler = CommandHandler('start', command_start)
@@ -65,21 +72,31 @@ def add_start_handler():
 
 
 
-def echo(bot, update):
+def command_stop(bot, update):
+    bot.send_message(chat_id=update.message.chat_id, text="You will not receive more signal alerts.")
+    active_chats.remove(update.message.chat_id)
+
+def add_stop_handler():
+    stop_handler = CommandHandler('stop', command_stop)
+    dispatcher.add_handler(stop_handler)
+
+
+
+def command_echo(bot, update):
     bot.send_message(chat_id=update.message.chat_id, text=update.message.text)
 
 def add_echo_handler():
-    echo_handler = MessageHandler(Filters.text, echo)
+    echo_handler = MessageHandler(Filters.text, command_echo)
     dispatcher.add_handler(echo_handler)
 
 
 
-def caps(bot, update, args):
+def command_caps(bot, update, args):
     text_caps = ' '.join(args).upper()
     bot.send_message(chat_id=update.message.chat_id, text=text_caps)
 
 def add_caps_handler():
-    caps_handler = CommandHandler('caps', caps, pass_args=True)
+    caps_handler = CommandHandler('caps', command_caps, pass_args=True)
     dispatcher.add_handler(caps_handler)
 
 
@@ -175,6 +192,12 @@ def macd_message(bot, user, symbol, timeframe, buy_sell, price):
 
 
 
+def callback_minute(bot, job):
+    for chat in active_chats:
+        bot.send_message(chat_id=chat, text='One message every minute')
+
+
+
 
 #%%--------------------------------------------------------------------------
 # ADD ALL HANDLERS
@@ -183,6 +206,7 @@ def macd_message(bot, user, symbol, timeframe, buy_sell, price):
 
 def add_all_handlers():
     add_start_handler()
+    add_stop_handler()
     add_echo_handler()
     add_caps_handler()
     add_command_alert_macd_handler()
@@ -204,3 +228,5 @@ def start():
 #############################################################################
 if __name__ == '__main__':
     print("Telegram Bot in script mode.")
+    start()
+    job_minute = job_queue.run_repeating(callback_minute, interval=2, first=0)
