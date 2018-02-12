@@ -22,6 +22,7 @@ time.sleep(10)
 #%% get balance_usd
 jsonreq = {'res':'balance_usd', 'params':{'user':'linternita', 'exchange': 'bittrex'}}
 jsonreq = {'res':'balance_usd', 'params':{'user':'farolillo', 'exchange': 'binance', }}
+jsonreq = {'res':'balance_usd', 'params':{'user':'farolillo', 'exchange': 'hitbtc2', }}
 r = requests.post('http://' + ORBBIT_HOST + ORDERMANAGERPORT + '/ordermanager/get/', json=jsonreq)
 rjson = r.json()
 balance_usd = rjson['balance_usd']

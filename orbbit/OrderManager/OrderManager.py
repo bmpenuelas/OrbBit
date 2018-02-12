@@ -185,7 +185,7 @@ def get_commands():
         exchange_id   = get_parameters['exchange']
         min_usd_value = get_parameters.get('min_usd_value', 0.0)
 
-        balance_usd, total_usd, balance = get_balance_usd(user_exchanges[user][exchange_id])
+        balance_usd, total_usd, balance = get_balance_usd(user_exchanges[user][exchange_id], min_usd_value=min_usd_value)
 
         return jsonify({'balance_usd': balance_usd, 'total_usd': total_usd})
 

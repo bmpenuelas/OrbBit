@@ -141,7 +141,6 @@ class fetch_thread_ohlcv(threading.Thread):
         filled = fill_ohlcv(self.params['symbol'], self.params['exchange'], self.params['timeframe'], fill_from)
         if filled: print('Filled ' + str(filled) + ' missing entries in ' + self.params['symbol'] +' @ '+ self.params['exchange'] +' '+ self.params['timeframe'])
 
-
         # keep asking for candles
         while 1:
             fetch_from_API_success = 0
@@ -196,7 +195,6 @@ def fill_ohlcv(symbol, exchange_id, timeframe, from_millis=0):
         fill_ohlcv(symbol, exchange_id, timeframe, from_millis)
 
     """
-
     retry_on_xchng_err_interval = 1
 
     exchange = exchanges[exchange_id]
@@ -235,6 +233,7 @@ def fill_ohlcv(symbol, exchange_id, timeframe, from_millis=0):
               inserted = 1
           except pymongo.errors.BulkWriteError as ex:
               filled += ex.details['nInserted']
+              inserted = 1
           except pymongo.errors.AutoReconnect as ex:
               pass
 

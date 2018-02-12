@@ -17,7 +17,7 @@ from   flask_httpauth import HTTPBasicAuth
 #                          CONFIGURATION PARAMETERS                         #
 #############################################################################
 
-default_fetch_timeframes = ['1m', '1h']
+default_fetch_timeframes = ['1m',]
 
 typical_quote_currencies = ['USDT', 'BTC', 'ETH']
 
@@ -532,12 +532,19 @@ def get_sell_history(exchange, symbol=None):
 def get_buy_history(exchange, symbol=None):
     """
     Example:
-        exchange = user_exchanges['farolillo']['hitbtc2']
+        exchange = user_exchanges['farolillo']['binance']
         symbol = 'XRP/USDT'
-        get_buy_history(exchange, symbol)
+        buy_history = get_buy_history(exchange), symbol)
     """
     trade_history = get_trade_history(exchange, symbol)
-    return [trade for trade in trade_history if trade['side'] == 'buy']
+
+    buy_history = []
+    try:
+        buy_history = [trade for trade in trade_history if trade['side'] == 'buy']
+    except:
+        print('ERR get_buy_history : Could not process trade list.')
+        print(trade_history)
+    return buy_history
 
 
 
@@ -778,7 +785,7 @@ def norm_price_history(symbol, average_price, first_buy, timeframe, exchange):
     if len(history) > 0:
         date8061 = [ row['date8061'] for row in history]
         if date8061[0] > (first_buy + timeframe_to_millis(timeframe)):
-            print('ERR norm_price_history: First data logged is more recent than first_buy.')
+            print('ERR norm_price_history: First_buy is older than first data logged.')
 
         close = [ row['ohlcv']['close'] for row in history]
 
@@ -786,6 +793,8 @@ def norm_price_history(symbol, average_price, first_buy, timeframe, exchange):
 
     else:
         print('ERR norm_price_history ' + symbol)
+        date8061 = []
+        close = []
         norm_price = []
 
     return {'date8061': date8061, 'price': close, 'norm_price': norm_price}
