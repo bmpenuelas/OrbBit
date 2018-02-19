@@ -25,31 +25,23 @@ except NameError:
 #%% params
 symbol = 'BTC/USDT'
 timeframe = '1m'
-ema_samples_fast = 10
-ema_samples_slow = 10
+ema_samples = 100
 
 
 #%% Get EMA
-jsonreq = {'res':'ema', 'params':{'symbol':symbol, 'exchange': 'hitbtc2', 'timeframe':timeframe, 'ema_samples': ema_samples_fast}}
+jsonreq = {'res':'ema', 'params':{'symbol':symbol, 'exchange': 'hitbtc2', 'timeframe':timeframe, 'ema_samples': ema_samples}}
 r = requests.post('http://127.0.0.1:5000/datamanager/get/', json=jsonreq)
-ema_dict_a = r.json()
-
-jsonreq = {'res':'ema', 'params':{'symbol':symbol, 'exchange': 'hitbtc2', 'timeframe':timeframe, 'ema_samples': ema_samples_slow}}
-r = requests.post('http://127.0.0.1:5000/datamanager/get/', json=jsonreq)
-ema_dict_b = r.json()
+ema_dict = r.json()
 
 #%% plot EMA
-date8061 = [ row['date8061'] for row in ema_dict_a]
-ema_fast = [ row['ema'] for row in ema_dict_a]
-ema_slow = [ row['ema'] for row in ema_dict_b]
+date8061 = [ row['date8061'] for row in ema_dict]
+ema = [ row['ema'] for row in ema_dict]
 
 date8061 = date8061[-1000:]
-ema_fast = ema_fast[-1000:]
-ema_slow = ema_slow[-1000:]
+ema = ema[-1000:]
 
 
-plt.plot(date8061, ema_fast, 'b')
-plt.plot(date8061, ema_slow, 'g')
+plt.plot(date8061, ema, 'b')
 
 #%% ohlcv
 jsonreq = {'res':'ohlcv', 'params':{'symbol':symbol, 'exchange': 'hitbtc2', 'timeframe':timeframe}}
@@ -69,12 +61,15 @@ quote_balanace = 50
 fee = 0.1 / 100
 txns = []
 total_hist = []
-i = 1
-while i < len(ema_fast):
-    if ((ema_fast[i] - ema_slow[i]) > 0) != ((ema_fast[i-1] - ema_slow[i-1]) > 0):
+i = 2
+while i < len(ema):
+    slope = 1 if (ema[i] > ema[i-1]) else 0
+    slope_previous = 1 if (ema[i-1] > ema[i-2]) else 0
+
+    if slope != slope_previous:
         for entry in ohlcv:
             if entry['date8061'] == date8061[i]:
-                if ((ema_fast[i] - ema_slow[i]) > 0): # buy
+                if slope > slope_previous: # buy
                     price = entry['ohlcv']['close']
 
                     base_balanace += (quote_balanace / price) * (1 - fee)

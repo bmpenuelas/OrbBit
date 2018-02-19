@@ -25,6 +25,7 @@ except NameError:
 
     import requests
     import time
+    import socket
 
 
 LOCAL_HOST = socket.gethostbyname( 'localhost' )
@@ -328,8 +329,8 @@ def test_bot(ema_samples, hyst_coef):
 plt.close("all")
 
 # %% Run parameters
-SYMBOL = 'ETC/USDT'
-TIMEFRAME = '15m'
+SYMBOL = 'BTC/USDT'
+TIMEFRAME = '1m'
 
 #%% Start OrbBit
 try:
@@ -345,7 +346,7 @@ except NameError:
 time.sleep(5)
 
 #%% get OHLCV
-jsonreq = {'res':'ohlcv', 'params':{'symbol':'ETC/USDT','timeframe':'15m'}}
+jsonreq = {'res':'ohlcv', 'params':{'symbol':SYMBOL, 'exchange': 'hitbtc2', 'timeframe': TIMEFRAME}}
 r = requests.post('http://' + LOCAL_HOST + ':5000/datamanager/get/',json=jsonreq)
 ohlcv = r.json()
 print(len(ohlcv))

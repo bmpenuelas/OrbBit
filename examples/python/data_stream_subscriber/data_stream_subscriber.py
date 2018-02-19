@@ -12,6 +12,7 @@ import requests
 import json
 import time
 import matplotlib.pyplot as plt
+import winsound
 
 
 ORBBIT_HOST = socket.gethostbyname( 'localhost' )
@@ -52,6 +53,9 @@ date8061 = []
 ema_fast = []
 ema_slow = []
 
+beep_time = 0.5
+beeps = 6
+
 while 1:
     reply = s.recv(4096) # waits here until new data is received
     reply_dict = json.loads(reply.decode('ascii')) # turn string into data structure
@@ -61,6 +65,20 @@ while 1:
     date8061.append(reply_dict['date8061'])
     ema_fast.append(reply_dict['macd']['ema_fast'])
     ema_slow.append(reply_dict['macd']['ema_slow'])
+
+    if reply_dict['macd']['cross'] == 1:
+        if reply_dict['macd']['rising'] == 1
+            tone = 250 
+        else:
+            tone = 500 
+
+        for i in range(beeps):
+          winsound.Beep(tone, int(beep_time*1000) )
+          time.sleep(beep_time)
+
+
+        # if reply_dict['macd']['rising'] == 0:
+        #     orb.OM.user_exchanges['farolillo']['hitbtc2'].create_limit_sell_order ('BTC/USD', 0.0100935, reply_dict['macd']['close'])
 
 
 plt.plot(date8061, ema_fast)
