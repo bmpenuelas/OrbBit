@@ -107,6 +107,8 @@ def add_caps_handler():
 #############################################################################
 
 def command_alert_macd(bot, update, args):
+    """ Command: alert_macd symbol timeframe ema_fast ema_slow exchange
+    """
     text = 'Starting MACD cross monitoring with params: '
     for arg in args:
         text += (arg + ' ')
@@ -118,9 +120,10 @@ def command_alert_macd(bot, update, args):
     timeframe = args[1]
     ema_fast = int(args[2])
     ema_slow = int(args[3])
+    exchange = args[4]
 
     # macd subscription required params
-    params = {'symbol': symbol, 'timeframe': timeframe, 'ema_fast': ema_fast, 'ema_slow': ema_slow}
+    params = {'symbol': symbol, 'timeframe': timeframe, 'ema_fast': ema_fast, 'ema_slow': ema_slow, 'exchange': exchange}
 
 
     new_macd_thread = alert_macd(user_requesting, params)
