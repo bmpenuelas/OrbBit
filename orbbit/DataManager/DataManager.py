@@ -6,7 +6,6 @@ import math
 import time
 import threading
 import queue
-import numpy as np
 import socket
 from   flask      import Flask, jsonify, abort, make_response, request
 from   flask_cors import CORS
