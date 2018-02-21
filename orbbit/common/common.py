@@ -17,7 +17,7 @@ from   flask_httpauth import HTTPBasicAuth
 #                          CONFIGURATION PARAMETERS                         #
 #############################################################################
 
-default_fetch_timeframes = ['1m',]
+default_fetch_timeframes = ['1m', '1h',]
 
 typical_quote_currencies = ['USDT', 'BTC', 'ETH']
 
