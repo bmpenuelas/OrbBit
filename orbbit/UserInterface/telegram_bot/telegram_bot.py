@@ -232,4 +232,4 @@ def start():
 if __name__ == '__main__':
     print("Telegram Bot in script mode.")
     start()
-    job_minute = job_queue.run_repeating(callback_minute, interval=2, first=0)
+    job_minute = job_queue.run_repeating(callback_minute, interval=60, first=0)

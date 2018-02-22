@@ -330,7 +330,7 @@ plt.close("all")
 
 # %% Run parameters
 SYMBOL = 'BTC/USDT'
-TIMEFRAME = '1m'
+TIMEFRAME = '1h'
 
 #%% Start OrbBit
 try:
@@ -394,7 +394,7 @@ ax.plot_surface(xs, ys, zs_pos, rstride=1, cstride=1, cmap='hot')
 plt.show()
 
 # %% analyze the bot of your choice
-best_bot_ema_samples = sim_ema_samples[70] # from the 3d plot, you can see which
+best_bot_ema_samples = sim_ema_samples[20] # from the 3d plot, you can see which
                                            # x and y values generate more profit,
                                            # input them here and run at several
                                            # intervals to see the real performance
