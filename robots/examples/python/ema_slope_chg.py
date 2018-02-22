@@ -306,8 +306,8 @@ def range_step(start, stop, step):
 
 def test_bot(ema_samples, hyst_coef):
     bot = ema_slope_chg_bot(ema_samples = ema_samples,
-                            hyst_continue_coef = hyst_coef,
-                            hyst_reverse_coef = hyst_coef,
+                            hyst_continue_coef = 0,
+                            hyst_reverse_coef = 0,
                             time_stamp = date8061[0],
                             curr_value = close[0],
                            )
@@ -357,16 +357,13 @@ close = [ row['ohlcv']['close'] for row in ohlcv]
 
 #%% simulate detectors with different params
 sim_ema_samples = list(range(1,100))
-sim_hyst_coef = list( range_step(2 * ema_slope_chg_bot.fee_pcnt, 5 * ema_slope_chg_bot.fee_pcnt, ema_slope_chg_bot.fee_pcnt) )
 
 
-
-profit     = [[0 for i in range( len(sim_hyst_coef) )] for j in range( len(sim_ema_samples) )]
-profit_pos = [[0 for i in range( len(sim_hyst_coef) )] for j in range( len(sim_ema_samples) )]
+profit     = [0 for j in range( len(sim_ema_samples) )]
+profit_pos = [0 for j in range( len(sim_ema_samples) )]
 for sim_ema in range( len(sim_ema_samples) ):
-    for sim_hyst in range( len(sim_hyst_coef) ):
-        profit[sim_ema][sim_hyst] = test_bot(sim_ema_samples[sim_ema], sim_hyst_coef[sim_hyst])
-        profit_pos[sim_ema][sim_hyst] = profit[sim_ema][sim_hyst] if profit[sim_ema][sim_hyst] > 0 else 0
+    profit[sim_ema] = test_bot(sim_ema_samples[sim_ema], 0)
+    profit_pos[sim_ema] = profit[sim_ema] if profit[sim_ema] > 0 else 0
 
 
 profit_arr = np.asarray(profit)
@@ -376,22 +373,16 @@ profit_best = max(profit_arr.flatten())
 
 print('MAX profit ' + str(profit_best))
 
-x = np.arange(0, len(sim_ema_samples), 1)
-y = np.arange(0, len(sim_hyst_coef), 1)
 
-xs, ys = np.meshgrid(x, y)
-zs = profit_arr[xs, ys]
-zs_pos = profit_arr_pos[xs, ys]
+# plot results
 
-fig = plt.figure()
-ax = Axes3D(fig)
-ax.plot_surface(xs, ys, zs, rstride=1, cstride=1, cmap='hot')
-plt.show()
+# plot_w_cursor([ [sim_ema_samples, profit],
+#               ]
+#              )
 
-fig = plt.figure()
-ax = Axes3D(fig)
-ax.plot_surface(xs, ys, zs_pos, rstride=1, cstride=1, cmap='hot')
-plt.show()
+plot_w_cursor([ [sim_ema_samples, profit_pos],
+              ]
+             )
 
 # %% analyze the bot of your choice
 best_bot_ema_samples = sim_ema_samples[20] # from the 3d plot, you can see which
@@ -399,7 +390,6 @@ best_bot_ema_samples = sim_ema_samples[20] # from the 3d plot, you can see which
                                            # input them here and run at several
                                            # intervals to see the real performance
                                            # over time
-best_bot_hyst = sim_hyst_coef[2]
 
 best_bot = ema_slope_chg_bot(ema_samples = best_bot_ema_samples,
                              hyst_continue_coef = best_bot_hyst,
