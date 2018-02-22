@@ -14,9 +14,9 @@ except NameError:
     #%% Start DataManager
     orb.DM.start_API()
 
-    # start the fetchers that ask the exchange for new data
-    r = requests.get('http://127.0.0.1:5000/datamanager/fetch/start')
-    time.sleep(10)
+    # # start the fetchers that ask the exchange for new data
+    # r = requests.get('http://127.0.0.1:5000/datamanager/fetch/start')
+    # time.sleep(10)
 
     orbbit_started = 1
 

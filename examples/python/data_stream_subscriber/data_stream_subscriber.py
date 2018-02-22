@@ -21,10 +21,10 @@ ORBBIT_HOST = socket.gethostbyname( 'localhost' )
 #%% Start DataManager
 orb.DM.start_API()
 
-# start the fetchers that ask the exchange for new data
-time.sleep(5)
-r = requests.post('http://' + ORBBIT_HOST + ':5000/datamanager/fetch/start')
-time.sleep(5)
+# # start the fetchers that ask the exchange for new data
+# time.sleep(5)
+# r = requests.post('http://' + ORBBIT_HOST + ':5000/datamanager/fetch/start')
+# time.sleep(5)
 
 #%% request subscription
 jsonreq = {'res':'macd', 'params':{'symbol':'BTC/USDT', 'exchange': 'hitbtc2', 'timeframe':'1m', 'ema_fast': 5, 'ema_slow': 12}}

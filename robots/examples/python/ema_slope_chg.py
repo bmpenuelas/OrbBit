@@ -338,8 +338,8 @@ try:
 except NameError:
     orb.DM.start_API()
 
-    r = requests.post('http://' + LOCAL_HOST + ':5000/datamanager/fetch/start')
-    print(r.json())
+    # r = requests.post('http://' + LOCAL_HOST + ':5000/datamanager/fetch/start')
+    # print(r.json())
 
     orbbit_started = 1
 
