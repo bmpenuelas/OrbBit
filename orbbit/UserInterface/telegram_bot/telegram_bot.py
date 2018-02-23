@@ -108,7 +108,7 @@ def command_ticker(bot, update, args):
     r = requests.post('http://' + ORBBIT_HOST + DATAMANAGERPORT + '/datamanager/get/', json=jsonreq)
     ticker = r.json()
     print(ticker)
-    bot.send_message(chat_id=update.message.chat_id, text=str(ticker))
+    bot.send_message(chat_id=update.message.chat_id, text=str(ticker['ticker']))
 
 def add_ticker_handler():
     ticker_handler = CommandHandler('ticker', command_ticker, pass_args=True)
