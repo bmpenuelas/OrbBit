@@ -14,11 +14,6 @@ ORBBIT_HOST = socket.gethostbyname( 'localhost' )
 DATAMANAGERPORT = ':5000'
 ORDERMANAGERPORT = ':5001'
 
-#%% Start fetchers
-r = requests.post('http://' + ORBBIT_HOST + DATAMANAGERPORT + '/datamanager/fetch/start')
-print(r.json())
-time.sleep(10)
-
 #%% get balance_usd
 jsonreq = {'res':'balance_usd', 'params':{'user':'linternita', 'exchange': 'bittrex'}}
 jsonreq = {'res':'balance_usd', 'params':{'user':'farolillo', 'exchange': 'binance', }}
@@ -59,10 +54,16 @@ ohlcv = r.json()
 print(len(ohlcv))
 
 #%% Get OHLCV
-jsonreq = {'res':'ohlcv', 'params':{'symbol':'BTC/USDT', 'exchange': 'hitbtc2', 'timeframe':'1m'}}
+jsonreq = {'res':'ohlcv', 'params':{'symbol':'ETH/USDT', 'exchange': 'hitbtc2', 'timeframe':'1m'}}
 r = requests.post('http://' + ORBBIT_HOST + DATAMANAGERPORT + '/datamanager/get/', json=jsonreq)
 ohlcv = r.json()
 print(len(ohlcv))
+
+#%% Get ticker
+jsonreq = {'res':'ticker', 'params':{'symbol':'BTC/USDT', 'exchange': 'hitbtc2'}}
+r = requests.post('http://' + ORBBIT_HOST + DATAMANAGERPORT + '/datamanager/get/', json=jsonreq)
+ticker = r.json()
+print(ticker)
 
 #%% plot history
 date8061 = [ row['date8061'] for row in ohlcv]

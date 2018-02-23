@@ -12,9 +12,11 @@ from   telegram.ext  import Updater, CommandHandler, MessageHandler, Filters
 
 
 #----------------------------------------------------------------------------
-# LOG
+# Host settings
 #----------------------------------------------------------------------------
-LOCAL_HOST = socket.gethostbyname( 'localhost' )
+ORBBIT_HOST = socket.gethostbyname( 'localhost' )
+DATAMANAGERPORT = ':5000'
+ORDERMANAGERPORT = ':5001'
 
 #----------------------------------------------------------------------------
 # LOG
@@ -59,9 +61,11 @@ active_chats = set()
 
 
 #############################################################################
-#                             EXAMPLE HANDLERS                              #
+#                             COMMAND HANDLERS                              #
 #############################################################################
+# After adding a new command, add it to add_all_handlers()
 
+# /start
 def command_start(bot, update):
     bot.send_message(chat_id=update.message.chat_id, text="You are now subscribed to signal alerts.")
     active_chats.add(update.message.chat_id)
@@ -72,6 +76,7 @@ def add_start_handler():
 
 
 
+# /stop    
 def command_stop(bot, update):
     bot.send_message(chat_id=update.message.chat_id, text="You will not receive more signal alerts.")
     active_chats.remove(update.message.chat_id)
@@ -82,6 +87,7 @@ def add_stop_handler():
 
 
 
+# /echo    
 def command_echo(bot, update):
     bot.send_message(chat_id=update.message.chat_id, text=update.message.text)
 
@@ -91,13 +97,22 @@ def add_echo_handler():
 
 
 
-def command_caps(bot, update, args):
-    text_caps = ' '.join(args).upper()
-    bot.send_message(chat_id=update.message.chat_id, text=text_caps)
+# /ticker    
+def command_ticker(bot, update, args):
+    symbol = args[0]
+    exchange_id = args[1]
 
-def add_caps_handler():
-    caps_handler = CommandHandler('caps', command_caps, pass_args=True)
-    dispatcher.add_handler(caps_handler)
+    print(exchange_id)
+
+    jsonreq = {'res':'ticker', 'params':{'symbol': symbol, 'exchange': exchange_id}}
+    r = requests.post('http://' + ORBBIT_HOST + DATAMANAGERPORT + '/datamanager/get/', json=jsonreq)
+    ticker = r.json()
+    print(ticker)
+    bot.send_message(chat_id=update.message.chat_id, text=str(ticker))
+
+def add_ticker_handler():
+    ticker_handler = CommandHandler('ticker', command_ticker, pass_args=True)
+    dispatcher.add_handler(ticker_handler)
 
 
 
@@ -106,6 +121,7 @@ def add_caps_handler():
 #                               BOT COMMANDS                                #
 #############################################################################
 
+# /alert_macd
 def command_alert_macd(bot, update, args):
     """ Command: alert_macd symbol timeframe ema_fast ema_slow exchange
     """
@@ -152,7 +168,7 @@ class alert_macd(threading.Thread):
 
         #%% request subscription
         jsonreq = {'res':'macd', 'params':params}
-        r = requests.post('http://' + LOCAL_HOST + ':5000/datamanager/subscribe/add', json=jsonreq)
+        r = requests.post('http://' + ORBBIT_HOST + ':5000/datamanager/subscribe/add', json=jsonreq)
         response_dict = r.json()
         print(response_dict)
 
@@ -211,7 +227,7 @@ def add_all_handlers():
     add_start_handler()
     add_stop_handler()
     add_echo_handler()
-    add_caps_handler()
+    add_ticker_handler()
     add_command_alert_macd_handler()
 
 

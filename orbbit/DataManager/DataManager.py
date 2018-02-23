@@ -520,6 +520,7 @@ def get_commands():
             return jsonify(ohlcv)
 
 
+    # Resource 'ema'
     elif get_resource == 'ema':
         exchange_id = get_parameters['exchange']
         symbol      = get_parameters['symbol']
@@ -554,6 +555,20 @@ def get_commands():
             ema_dict = [{'date8061': date8061[i], 'ema': ema[i]} for i in range(len(ema))]
 
             return jsonify(ema_dict)
+
+    # Resource 'ticker'
+    elif get_resource == 'ticker':
+        symbol      = get_parameters['symbol']        
+        exchange_id = get_parameters['exchange']
+
+        exchange = exchanges[exchange_id]
+        # symbols = list(exchange.markets.keys())
+        # if not symbol in symbols:
+        #     return jsonify({'error': 'Symbol not in exchange.'})
+        # else:
+        ticker = exchange.fetch_ticker(symbol_os(symbol, exchange_id))['last']
+        return jsonify({'ticker': ticker})
+
 
 
     else:
@@ -773,24 +788,6 @@ class subscriber_thread(threading.Thread):
             self.queue.task_done()
 
 
-
-
-#----------------------------------------------------------------------------
-#   Route /...
-#----------------------------------------------------------------------------
-
-@datamanager_flask_app.route('/ticker', methods=['POST'])
-def get_ticker():
-    """ Get BTC/USDT ticker info.
-
-    Args:
-
-    Returns:
-      Json-formatted data.
-
-    """
-
-    return jsonify({'ticker': fetch_ticker()})
 
 
 

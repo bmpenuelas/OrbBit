@@ -374,15 +374,17 @@ profit_best = max(profit_arr.flatten())
 print('MAX profit ' + str(profit_best))
 
 
-# plot results
 
-# plot_w_cursor([ [sim_ema_samples, profit],
-#               ]
-#              )
 
+# plot profit vs ema_samples
 plot_w_cursor([ [sim_ema_samples, profit_pos],
               ]
              )
+
+# calculate the safest intervals
+safe_intervals = {}
+
+
 
 # %% analyze the bot of your choice
 best_bot_ema_samples = sim_ema_samples[20] # from the 3d plot, you can see which
